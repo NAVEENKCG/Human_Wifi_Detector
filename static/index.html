@@ -599,8 +599,8 @@ const scene = new THREE.Scene();
 scene.fog = new THREE.FogExp2(0x0a0807, 0.06);
 
 const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.set(0, 2.2, 5.5);
-camera.lookAt(0, 0.9, 0);
+camera.position.set(0, 1.6, 5.0);
+camera.lookAt(0, 0.8, 0);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -622,14 +622,14 @@ const groundLight = new THREE.PointLight(0x00ff88, 0.3, 8);
 groundLight.position.set(0, 0.1, 0);
 scene.add(groundLight);
 
-// ── Wireframe Spheres ──
-const wireMat = new THREE.MeshBasicMaterial({ color: 0x1a3a6c, wireframe: true, transparent: true, opacity: 0.25 });
-const sphere1 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.5, 2), wireMat);
-sphere1.position.set(-1, 3.5, -3);
+// ── Wireframe Spheres (large, prominent like RuView) ──
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x2244aa, wireframe: true, transparent: true, opacity: 0.3 });
+const sphere1 = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 3), wireMat);
+sphere1.position.set(-2, 4, -5);
 scene.add(sphere1);
-const sphere2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 2), wireMat.clone());
-sphere2.material.opacity = 0.15;
-sphere2.position.set(2, 2.5, -2);
+const wireMat2 = new THREE.MeshBasicMaterial({ color: 0x1a3a8c, wireframe: true, transparent: true, opacity: 0.2 });
+const sphere2 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.5, 2), wireMat2);
+sphere2.position.set(3, 3, -4);
 scene.add(sphere2);
 
 // ── Grid floor ──
@@ -637,33 +637,42 @@ const grid = new THREE.GridHelper(20, 40, 0x1a2a1a, 0x0a150a);
 grid.position.y = 0;
 scene.add(grid);
 
-// ── Ground dots (scattered like RuView) ──
+// ── Ground dots (dense scattered grid like RuView) ──
 const dotGroup = new THREE.Group();
-for (let x = -5; x <= 5; x += 0.6) {
-    for (let z = -5; z <= 5; z += 0.6) {
-        if (Math.random() > 0.25) continue;
+for (let x = -6; x <= 6; x += 0.4) {
+    for (let z = -6; z <= 6; z += 0.4) {
+        if (Math.random() > 0.35) continue;
+        const isLit = Math.random() > 0.5;
         const dot = new THREE.Mesh(
-            new THREE.BoxGeometry(0.07, 0.01, 0.07),
+            new THREE.BoxGeometry(0.12, 0.015, 0.12),
             new THREE.MeshBasicMaterial({
-                color: Math.random() > 0.7 ? 0x00ff88 : 0x1a3a2a,
+                color: isLit ? 0x00ff88 : 0x1a3a2a,
                 transparent: true,
-                opacity: 0.2 + Math.random() * 0.5
+                opacity: isLit ? (0.3 + Math.random() * 0.6) : (0.15 + Math.random() * 0.2)
             })
         );
-        dot.position.set(x + (Math.random() - 0.5) * 0.4, 0.005, z + (Math.random() - 0.5) * 0.4);
+        dot.position.set(x + (Math.random()-0.5)*0.2, 0.008, z + (Math.random()-0.5)*0.2);
         dotGroup.add(dot);
     }
 }
 scene.add(dotGroup);
 
-// ── Ground glow disc ──
+// ── Ground glow disc (larger, brighter) ──
 const glowDisc = new THREE.Mesh(
-    new THREE.CircleGeometry(0.8, 32),
-    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
+    new THREE.CircleGeometry(1.5, 48),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.12, side: THREE.DoubleSide })
 );
 glowDisc.rotation.x = -Math.PI / 2;
 glowDisc.position.y = 0.01;
 scene.add(glowDisc);
+// Secondary glow ring
+const glowDisc2 = new THREE.Mesh(
+    new THREE.CircleGeometry(0.6, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+);
+glowDisc2.rotation.x = -Math.PI / 2;
+glowDisc2.position.y = 0.015;
+scene.add(glowDisc2);
 
 // ── Scan ring (pulses on motion) ──
 const scanRing = new THREE.Mesh(
@@ -675,13 +684,35 @@ scanRing.position.y = 0.02;
 scene.add(scanRing);
 let scanPulse = 0;
 
-// ── Body glow column ──
-const bodyGlow = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.18, 0.12, 1.5, 8),
-    new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.04 })
+// ── Body glow column (bright holographic fill like RuView) ──
+// Inner bright core
+const bodyGlowInner = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.1, 1.6, 16),
+    new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.12 })
 );
-bodyGlow.position.y = 0.85;
-scene.add(bodyGlow);
+bodyGlowInner.position.y = 0.85;
+scene.add(bodyGlowInner);
+// Mid glow layer
+const bodyGlowMid = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.16, 1.7, 16),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.07 })
+);
+bodyGlowMid.position.y = 0.85;
+scene.add(bodyGlowMid);
+// Outer glow halo
+const bodyGlowOuter = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.35, 0.25, 1.8, 16),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.035 })
+);
+bodyGlowOuter.position.y = 0.85;
+scene.add(bodyGlowOuter);
+// Backdrop glow plane (behind figure)
+const backdropGeo = new THREE.PlaneGeometry(1.2, 2.0);
+const backdropMat = new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.04, side: THREE.DoubleSide });
+const backdrop = new THREE.Mesh(backdropGeo, backdropMat);
+backdrop.position.set(0, 0.95, -0.15);
+scene.add(backdrop);
+const bodyGlow = bodyGlowInner; // alias for animation reference
 
 // ── Human Skeleton (17 keypoints) ──
 const KP = [
@@ -768,8 +799,8 @@ function animateScene(t) {
 
     // Camera slow orbit
     camera.position.x = Math.sin(sec * 0.05) * 0.8;
-    camera.position.z = 5.5 + Math.cos(sec * 0.05) * 0.5;
-    camera.lookAt(0, 0.9, 0);
+    camera.position.z = 5.0 + Math.cos(sec * 0.05) * 0.4;
+    camera.lookAt(0, 0.8, 0);
 
     // Wireframe rotation
     sphere1.rotation.y += 0.001;
@@ -804,7 +835,10 @@ function animateScene(t) {
     const vis = figurePresent ? 1 : 0.15;
     kpMat.opacity = vis;
     boneMat.opacity = vis * 0.7;
-    bodyGlow.material.opacity = vis * 0.04;
+    bodyGlowInner.material.opacity = vis * 0.12;
+    bodyGlowMid.material.opacity = vis * 0.07;
+    bodyGlowOuter.material.opacity = vis * 0.035;
+    backdropMat.opacity = vis * 0.04;
 
     // Ground glow pulse
     glowDisc.material.opacity = 0.06 + Math.sin(sec * 2) * 0.03;
