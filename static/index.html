@@ -3,70 +3,678 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RSSI Motion Detector</title>
-    <!-- Fonts: Syne for display, DM Sans for body -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
-    <!-- Chart.js -->
+    <title>RSSI Motion Detector — NAVEENKCG</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <link rel="stylesheet" href="style.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap');
+
+        :root {
+            --bg-color: #0d1117;
+            --panel-bg: #161b22;
+            --accent-color: #00ff88;
+            --alert-color: #ff4444;
+            --text-main: #c9d1d9;
+            --text-dim: #8b949e;
+            --border-color: #30363d;
+            --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: var(--font-mono);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow-x: hidden;
+        }
+
+        /* Top Bar */
+        .topbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 2rem;
+            background: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .topbar-left {
+            color: var(--accent-color);
+            font-weight: 700;
+            font-size: 1.2rem;
+            letter-spacing: 1px;
+        }
+
+        .topbar-center {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 1rem;
+        }
+
+        .connection-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: var(--accent-color);
+            box-shadow: 0 0 8px var(--accent-color);
+            transition: background-color 0.3s, box-shadow 0.3s;
+        }
+        .connection-dot.offline {
+            background-color: var(--alert-color);
+            box-shadow: 0 0 8px var(--alert-color);
+        }
+
+        .topbar-right {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .slider-group input {
+            cursor: pointer;
+            accent-color: var(--accent-color);
+        }
+
+        .btn-toggle {
+            background: transparent;
+            border: 1px solid var(--accent-color);
+            color: var(--accent-color);
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            transition: all 0.3s ease;
+        }
+        .btn-toggle:hover {
+            background: rgba(0, 255, 136, 0.1);
+        }
+
+        /* Offline Banner */
+        .offline-banner {
+            background: var(--alert-color);
+            color: white;
+            text-align: center;
+            padding: 0.5rem;
+            font-weight: bold;
+            display: none;
+        }
+
+        /* Main Grid */
+        .dashboard {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 1.5rem;
+            padding: 2rem;
+            flex-grow: 1;
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .panel-title {
+            color: var(--text-dim);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 1.5rem;
+        }
+
+        /* Col 1: Gauge */
+        .signal-panel {
+            align-items: center;
+            text-align: center;
+        }
+
+        .gauge-container {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin-bottom: 1rem;
+        }
+
+        .gauge-svg {
+            transform: rotate(-90deg);
+            width: 100%;
+            height: 100%;
+        }
+
+        .gauge-bg {
+            fill: none;
+            stroke: var(--border-color);
+            stroke-width: 12;
+        }
+
+        .gauge-value-path {
+            fill: none;
+            stroke: var(--accent-color);
+            stroke-width: 12;
+            stroke-linecap: round;
+            stroke-dasharray: 502; /* 2 * pi * r (r=80) */
+            stroke-dashoffset: 502;
+            transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;
+        }
+
+        .gauge-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 32px;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        .ssid-display {
+            font-size: 1.1rem;
+            color: var(--accent-color);
+            margin-bottom: 1rem;
+        }
+
+        .zscore-display {
+            font-size: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .calibrating {
+            color: var(--text-dim);
+            font-style: italic;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-badge {
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 1.1rem;
+            background: var(--border-color);
+            color: var(--text-dim);
+            transition: all 0.3s ease;
+        }
+
+        .status-badge.alert {
+            background: rgba(255, 68, 68, 0.2);
+            color: var(--alert-color);
+            border: 1px solid var(--alert-color);
+            animation: pulse-alert 1s infinite;
+        }
+
+        @keyframes pulse-alert {
+            0% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(255, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(255, 68, 68, 0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Col 2: Chart */
+        .chart-panel {
+            transition: background-color 0.3s ease;
+        }
+        .chart-panel.flash {
+            background-color: rgba(255, 68, 68, 0.15);
+        }
+
+        .chart-wrapper {
+            flex-grow: 1;
+            position: relative;
+            min-height: 250px;
+        }
+
+        .stat-cards {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .stat-card {
+            flex: 1;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+            border-radius: 6px;
+            text-align: center;
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: var(--text-dim);
+            margin-bottom: 0.5rem;
+        }
+        .stat-card .value {
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: var(--text-main);
+        }
+
+        /* Col 3: Event Log */
+        .log-panel {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .log-container {
+            flex-grow: 1;
+            overflow-y: auto;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .log-entry {
+            color: var(--accent-color);
+            border-left: 2px solid var(--accent-color);
+            padding-left: 8px;
+        }
+
+        .log-entry.alert {
+            color: var(--alert-color);
+            border-color: var(--alert-color);
+        }
+
+        .log-actions {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .btn-action {
+            flex: 1;
+            background: var(--border-color);
+            color: var(--text-main);
+            border: none;
+            padding: 0.6rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            transition: background 0.3s;
+        }
+        .btn-action:hover {
+            background: #4b535d;
+        }
+
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-color); }
+        ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+
+        @media (max-width: 1024px) {
+            .dashboard {
+                grid-template-columns: 1fr;
+            }
+            .topbar {
+                flex-direction: column;
+                gap: 1rem;
+            }
+        }
+    </style>
 </head>
 <body>
+
+    <div id="offline-banner" class="offline-banner">SERVER OFFLINE - RECONNECTING...</div>
+
     <div class="topbar">
-        <div class="title-area">
-            <div id="connection-dot" class="dot dot-red"></div>
-            <h1>RSSI Motion Detector</h1>
+        <div class="topbar-left">[ HUMAN WIFI DETECTOR v2 ]</div>
+        <div class="topbar-center">
+            <div id="connection-dot" class="connection-dot"></div>
+            <span id="ssid-top">Scanning...</span>
         </div>
-        <div class="controls-area">
-            <span id="router-name" class="router-name">Connecting...</span>
-            <div class="slider-container">
-                <label for="threshold-slider">Threshold Z-score: <span id="threshold-val">2.0</span></label>
-                <input type="range" id="threshold-slider" min="1.5" max="3.5" step="0.1" value="2.0">
+        <div class="topbar-right">
+            <div class="slider-group">
+                <label id="sensitivity-label">SENSITIVITY: 2.0σ</label>
+                <input type="range" id="threshold-slider" min="1.0" max="4.0" step="0.1" value="2.0">
             </div>
-            <button id="export-btn" class="glass-btn">Export CSV</button>
+            <button id="btn-mute" class="btn-toggle">🔔 BEEP ON</button>
         </div>
     </div>
 
     <div class="dashboard">
-        <!-- Left Panel: 30% -->
-        <div class="panel left-panel glass-card">
-            <h2>Live Signal</h2>
+        <!-- Column 1: Signal Panel -->
+        <div class="panel signal-panel">
+            <div class="panel-title">Signal Analytics</div>
+            
             <div class="gauge-container">
-                <svg viewBox="0 0 100 50" class="gauge">
-                    <path class="gauge-bg" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke-width="10" stroke-linecap="round" />
-                    <path id="gauge-fill" class="gauge-fill" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="125.6" />
+                <svg class="gauge-svg" viewBox="0 0 200 200">
+                    <circle class="gauge-bg" cx="100" cy="100" r="80"></circle>
+                    <circle id="gauge-path" class="gauge-value-path" cx="100" cy="100" r="80"></circle>
                 </svg>
-                <div class="gauge-value"><span id="signal-percent">0</span>%</div>
+                <div class="gauge-text"><span id="signal-text">0</span>%</div>
             </div>
-            <div class="stats">
-                <div class="stat-box">
-                    <span class="stat-label">Z-Score</span>
-                    <span id="z-score" class="stat-value">0.0</span>
+
+            <div id="ssid-display" class="ssid-display">---</div>
+            
+            <div id="zscore-display" class="zscore-display calibrating">BASELINE CALIBRATING...</div>
+
+            <div id="status-badge" class="status-badge">● IDLE</div>
+        </div>
+
+        <!-- Column 2: Live Chart -->
+        <div id="chart-panel" class="panel chart-panel">
+            <div class="panel-title">Real-time RSSI Telemetry</div>
+            <div class="chart-wrapper">
+                <canvas id="rssi-chart"></canvas>
+            </div>
+            <div class="stat-cards">
+                <div class="stat-card">
+                    <div class="label">CURRENT</div>
+                    <div id="stat-current" class="value">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">MEAN (10s)</div>
+                    <div id="stat-mean" class="value">0.0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">STD DEV</div>
+                    <div id="stat-std" class="value">0.00</div>
                 </div>
             </div>
-            <div id="status-badge" class="badge badge-idle">
-                IDLE
-            </div>
         </div>
 
-        <!-- Center Panel: 50% -->
-        <div id="center-panel" class="panel center-panel glass-card">
-            <h2>RSSI History (60s)</h2>
-            <div class="chart-container">
-                <canvas id="rssiChart"></canvas>
+        <!-- Column 3: Event Log -->
+        <div class="panel log-panel">
+            <div class="panel-title">Detection Log</div>
+            <div id="log-container" class="log-container">
+                <!-- Logs injected here -->
             </div>
-        </div>
-
-        <!-- Right Panel: 20% -->
-        <div class="panel right-panel glass-card">
-            <h2>Event Log</h2>
-            <div id="event-log" class="log-container">
-                <!-- Log entries will go here -->
+            <div class="log-actions">
+                <button id="btn-clear" class="btn-action">CLEAR LOG</button>
+                <button id="btn-export" class="btn-action">EXPORT CSV</button>
             </div>
         </div>
     </div>
 
-    <script src="script.js"></script>
+    <script>
+        // Audio Context Setup
+        let audioCtx;
+        let beepEnabled = localStorage.getItem('beepEnabled') !== 'false';
+        const btnMute = document.getElementById('btn-mute');
+        
+        function updateMuteBtn() {
+            btnMute.innerText = beepEnabled ? '🔔 BEEP ON' : '🔕 MUTE';
+        }
+        updateMuteBtn();
+
+        btnMute.addEventListener('click', () => {
+            beepEnabled = !beepEnabled;
+            localStorage.setItem('beepEnabled', beepEnabled);
+            updateMuteBtn();
+            // Initialize audio context on user gesture
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        });
+
+        function playBeep() {
+            if (!beepEnabled) return;
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(220, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        // Chart Setup
+        const ctx = document.getElementById('rssi-chart').getContext('2d');
+        const MAX_POINTS = 60;
+        let chartData = Array(MAX_POINTS).fill(null);
+        let chartLabels = Array(MAX_POINTS).fill('');
+        
+        let adaptiveMean = null;
+
+        // Custom plugin for horizontal mean line
+        const meanLinePlugin = {
+            id: 'meanLine',
+            beforeDraw: (chart) => {
+                if (adaptiveMean === null) return;
+                const { ctx, chartArea: { left, right }, scales: { y } } = chart;
+                const yPos = y.getPixelForValue(adaptiveMean);
+                
+                ctx.save();
+                ctx.beginPath();
+                ctx.moveTo(left, yPos);
+                ctx.lineTo(right, yPos);
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#8b949e';
+                ctx.setLineDash([5, 5]);
+                ctx.stroke();
+                ctx.restore();
+            }
+        };
+
+        const chart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [{
+                    label: 'RSSI %',
+                    data: chartData,
+                    borderColor: '#00ff88',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius: 0,
+                    fill: false
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: { duration: 0 },
+                scales: {
+                    x: { display: false },
+                    y: { 
+                        min: 0, max: 100,
+                        grid: { color: '#30363d' },
+                        ticks: { color: '#8b949e' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            },
+            plugins: [meanLinePlugin]
+        });
+
+        // UI Elements
+        const gaugePath = document.getElementById('gauge-path');
+        const signalText = document.getElementById('signal-text');
+        const ssidDisplay = document.getElementById('ssid-display');
+        const ssidTop = document.getElementById('ssid-top');
+        const zscoreDisplay = document.getElementById('zscore-display');
+        const statusBadge = document.getElementById('status-badge');
+        const connectionDot = document.getElementById('connection-dot');
+        const offlineBanner = document.getElementById('offline-banner');
+        const chartPanel = document.getElementById('chart-panel');
+        const statCurrent = document.getElementById('stat-current');
+        const statMean = document.getElementById('stat-mean');
+        const statStd = document.getElementById('stat-std');
+        const logContainer = document.getElementById('log-container');
+        
+        const slider = document.getElementById('threshold-slider');
+        const sensitivityLabel = document.getElementById('sensitivity-label');
+
+        // State
+        let failCount = 0;
+        let isCalibrating = true;
+        let bootTime = Date.now();
+        let lastMotionTimestamp = 0;
+        let rawHistory = [];
+        let logEntries = []; // For CSV
+
+        // Threshold slider
+        slider.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value).toFixed(1);
+            sensitivityLabel.innerText = `SENSITIVITY: ${val}σ`;
+        });
+        
+        slider.addEventListener('change', async (e) => {
+            const val = e.target.value;
+            try {
+                await fetch(`http://localhost:5000/set_threshold/${val}`);
+            } catch(err) {
+                console.error("Failed to set threshold");
+            }
+        });
+
+        // Updates
+        function updateGauge(signal) {
+            signalText.innerText = signal;
+            const r = 80;
+            const circumference = 2 * Math.PI * r; // 502.65
+            const offset = circumference - (signal / 100) * circumference;
+            gaugePath.style.strokeDashoffset = offset;
+
+            if (signal > 70) {
+                gaugePath.style.stroke = 'var(--accent-color)'; // Green
+            } else if (signal >= 40) {
+                gaugePath.style.stroke = '#ffcc00'; // Yellow
+            } else {
+                gaugePath.style.stroke = 'var(--alert-color)'; // Red
+            }
+        }
+
+        function calculateStats(history) {
+            if (history.length === 0) return { mean: 0, std: 0 };
+            const mean = history.reduce((a,b)=>a+b, 0) / history.length;
+            const variance = history.reduce((a,b)=>a+Math.pow(b-mean, 2), 0) / history.length;
+            return { mean, std: Math.sqrt(variance) };
+        }
+
+        function addLogEntry(zscore, signal) {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('en-US', {hour12: false});
+            const zStr = (zscore > 0 ? '+' : '') + zscore.toFixed(2);
+            
+            const div = document.createElement('div');
+            div.className = 'log-entry alert';
+            div.innerText = `[${timeStr}]  MOTION  Z: ${zStr}  Signal: ${signal}%`;
+            
+            logContainer.prepend(div);
+            logEntries.push({ time: timeStr, z: zStr, signal: signal });
+            
+            // Keep max 50
+            if (logContainer.children.length > 50) {
+                logContainer.removeChild(logContainer.lastChild);
+            }
+        }
+
+        // Main Loop
+        async function poll() {
+            try {
+                const res = await fetch('http://localhost:5000/rssi');
+                const data = await res.json();
+                
+                // Reset failures
+                failCount = 0;
+                offlineBanner.style.display = 'none';
+                connectionDot.classList.remove('offline');
+                
+                ssidTop.innerText = data.router;
+                ssidDisplay.innerText = data.router;
+
+                // Calibrating phase logic (first 10 seconds)
+                if (isCalibrating) {
+                    if (Date.now() - bootTime > 10000) {
+                        isCalibrating = false;
+                        zscoreDisplay.classList.remove('calibrating');
+                    }
+                }
+
+                if (!isCalibrating) {
+                    zscoreDisplay.innerText = `Z-SCORE: ${(data.zscore > 0 ? '+' : '') + data.zscore.toFixed(2)}`;
+                }
+
+                updateGauge(data.signal);
+
+                // Chart updating
+                chartData.shift();
+                chartData.push(data.signal);
+                chart.update();
+
+                // Stats updating
+                rawHistory.push(data.signal);
+                if (rawHistory.length > 10) rawHistory.shift();
+                
+                const stats = calculateStats(rawHistory);
+                adaptiveMean = stats.mean;
+                
+                statCurrent.innerText = `${data.signal}%`;
+                statMean.innerText = `${stats.mean.toFixed(1)}%`;
+                statStd.innerText = stats.std.toFixed(2);
+
+                // Motion Logic
+                if (data.motion) {
+                    statusBadge.innerText = '⚠ MOTION DETECTED';
+                    statusBadge.className = 'status-badge alert';
+                    
+                    if (data.timestamp !== lastMotionTimestamp) {
+                        lastMotionTimestamp = data.timestamp;
+                        playBeep();
+                        
+                        chartPanel.classList.add('flash');
+                        setTimeout(() => chartPanel.classList.remove('flash'), 1500);
+                        
+                        addLogEntry(data.zscore, data.signal);
+                    }
+                } else {
+                    statusBadge.innerText = '● IDLE';
+                    statusBadge.className = 'status-badge';
+                }
+
+            } catch (err) {
+                failCount++;
+                if (failCount >= 3) {
+                    offlineBanner.style.display = 'block';
+                    connectionDot.classList.add('offline');
+                }
+            }
+        }
+
+        setInterval(poll, 1000);
+
+        // Buttons
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            logContainer.innerHTML = '';
+        });
+
+        document.getElementById('btn-export').addEventListener('click', () => {
+            if (logEntries.length === 0) return;
+            let csv = "Time,Z-Score,Signal%\n";
+            logEntries.forEach(e => {
+                csv += `${e.time},${e.z},${e.signal}\n`;
+            });
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.setAttribute('href', url);
+            a.setAttribute('download', 'motion_log.csv');
+            a.click();
+        });
+    </script>
 </body>
 </html>
