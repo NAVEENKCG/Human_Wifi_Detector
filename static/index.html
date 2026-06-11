@@ -3,25 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CSI Sensing — NAVEENKCG</title>
+    <title>Human WiFi Detector — NAVEENKCG</title>
+    <meta name="description" content="WiFi RSSI/CSI based human presence detection, vital sign monitoring, and motion sensing observatory.">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0a0e1a;
-            --panel: #111827;
-            --border: #1e293b;
+            --bg: #0a0807;
+            --panel: rgba(12, 10, 8, 0.88);
+            --panel-border: rgba(255, 200, 100, 0.08);
             --accent: #00d4ff;
-            --accent-glow: rgba(0, 212, 255, 0.3);
+            --accent-glow: rgba(0, 212, 255, 0.25);
+            --green: #00ff88;
+            --green-glow: rgba(0, 255, 136, 0.3);
+            --amber: #c8a050;
+            --amber-dim: #8a7040;
             --alert: #ff4444;
-            --alert-glow: rgba(255, 68, 68, 0.3);
-            --amber: #f59e0b;
-            --green: #22c55e;
-            --text: #e2e8f0;
-            --text-dim: #64748b;
+            --text: #d4c8b8;
+            --text-dim: #6a5e50;
             --mono: 'JetBrains Mono', 'Courier New', monospace;
+            --display: 'Syne', sans-serif;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -30,849 +34,1078 @@
             background: var(--bg);
             color: var(--text);
             font-family: var(--mono);
-            min-height: 100vh;
+            height: 100vh;
+            overflow: hidden;
+            cursor: default;
+        }
+
+        #scene3d {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+        }
+
+        /* Vignette + scanlines */
+        .overlay-fx {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(0,0,0,0.6) 100%);
+            pointer-events: none;
+            z-index: 1;
+        }
+        .scanlines {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0,0,0,0.04) 2px, rgba(0,0,0,0.04) 4px);
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* All UI floats above the 3D scene */
+        .ui-layer {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+        .ui-layer > * { pointer-events: auto; }
+
+        /* ── Top bar ── */
+        .topbar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 1.5rem 2rem;
+        }
+        .brand {
             display: flex;
             flex-direction: column;
         }
-
-        /* ── Offline Banner ── */
-        .offline-banner {
-            background: var(--alert);
+        .brand-name {
+            font-family: var(--display);
+            font-weight: 800;
+            font-size: 1.8rem;
             color: #fff;
-            text-align: center;
-            padding: 0.5rem;
+            letter-spacing: -0.03em;
+            line-height: 1;
+        }
+        .brand-name span { color: var(--accent); }
+        .brand-sub {
+            font-size: 0.65rem;
+            color: var(--amber-dim);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-top: 0.35rem;
+        }
+        .top-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+        .pill {
+            padding: 0.3rem 0.8rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-family: var(--mono);
             font-weight: 700;
-            font-size: 0.85rem;
-            display: none;
-            letter-spacing: 1px;
+            letter-spacing: 0.05em;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 1px solid;
+        }
+        .pill-demo {
+            background: rgba(0, 255, 136, 0.15);
+            border-color: rgba(0, 255, 136, 0.4);
+            color: var(--green);
+        }
+        .pill-demo::before { content: '● '; }
+        .pill-mode {
+            background: var(--panel);
+            border-color: var(--panel-border);
+            color: var(--amber);
+        }
+        .pill:hover { transform: scale(1.04); }
+        .pill:active { transform: scale(0.96); }
+        .gear-btn {
+            width: 32px; height: 32px;
+            border-radius: 50%;
+            background: var(--panel);
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s;
+        }
+        .gear-btn:hover { border-color: var(--amber); color: var(--amber); }
+
+        /* Top-right description text */
+        .top-desc {
+            position: absolute;
+            top: 1.5rem; right: 2rem;
+            text-align: right;
+        }
+        .top-desc .scenario-label {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            font-style: italic;
+            max-width: 260px;
+            line-height: 1.5;
         }
 
-        /* ── Top Bar ── */
-        .topbar {
+        /* ── Glass panel base ── */
+        .glass {
+            background: var(--panel);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--panel-border);
+            border-radius: 12px;
+            box-shadow: inset 0 1px 0 rgba(255,200,100,0.06), 0 8px 32px rgba(0,0,0,0.5);
+        }
+
+        /* ── Left panel: Vital Signs ── */
+        .panel-vitals {
+            position: absolute;
+            bottom: 6rem; left: 2rem;
+            width: 180px;
+            padding: 1.25rem;
+        }
+        .panel-header {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 1rem;
+        }
+        .vital-row {
+            margin-bottom: 1.1rem;
+            padding-bottom: 1.1rem;
+            border-bottom: 1px solid rgba(255,200,100,0.06);
+        }
+        .vital-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+        .vital-icon {
+            font-size: 0.75rem;
+            margin-right: 6px;
+        }
+        .vital-label {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+        .vital-value {
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+            margin-top: 0.3rem;
+        }
+        .vital-num {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--accent);
+            font-family: var(--display);
+            line-height: 1;
+        }
+        .vital-num.amber { color: var(--amber); }
+        .vital-num.green { color: var(--green); }
+        .vital-unit {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+        }
+        .vital-bar {
+            height: 3px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 2px;
+            margin-top: 0.5rem;
+            overflow: hidden;
+        }
+        .vital-bar-fill {
+            height: 100%;
+            border-radius: 2px;
+            transition: width 0.5s ease, background 0.5s;
+        }
+
+        /* ── Right panel: WiFi Signal ── */
+        .panel-signal {
+            position: absolute;
+            bottom: 6rem; right: 2rem;
+            width: 200px;
+            padding: 1.25rem;
+        }
+        .sig-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 0.75rem 1.5rem;
-            background: var(--panel);
-            border-bottom: 1px solid var(--border);
-            flex-wrap: wrap;
-            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.75rem;
         }
-        .topbar-brand {
-            color: var(--accent);
-            font-weight: 700;
-            font-size: 1rem;
-            letter-spacing: 1px;
-            white-space: nowrap;
+        .sig-label { color: var(--text-dim); }
+        .sig-val { color: var(--accent); font-weight: 700; }
+        .sig-val.alert { color: var(--alert); }
+        .person-dots {
+            display: flex; gap: 3px; align-items: center;
         }
-        .topbar-center {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 0.9rem;
-        }
-        .dot {
-            width: 10px; height: 10px;
+        .pdot {
+            width: 8px; height: 8px;
             border-radius: 50%;
-            background: var(--green);
-            box-shadow: 0 0 6px var(--green);
+            background: rgba(255,255,255,0.1);
+            transition: background 0.3s;
+        }
+        .pdot.active { background: var(--green); box-shadow: 0 0 4px var(--green); }
+        .sparkline-wrap {
+            height: 40px;
+            margin: 0.75rem 0;
+            background: rgba(0,0,0,0.3);
+            border-radius: 6px;
+            overflow: hidden;
+            padding: 4px;
+        }
+        #sparkline { width: 100%; height: 100%; }
+        .presence-section {
+            text-align: center;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid rgba(255,200,100,0.06);
+        }
+        .presence-label {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            margin-bottom: 0.5rem;
+        }
+        .presence-badge {
+            display: inline-block;
+            padding: 0.4rem 1.2rem;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
             transition: all 0.3s;
         }
-        .dot.off {
-            background: var(--alert);
-            box-shadow: 0 0 6px var(--alert);
+        .presence-badge.present {
+            background: rgba(0, 255, 136, 0.12);
+            border: 1px solid rgba(0, 255, 136, 0.3);
+            color: var(--green);
         }
-        .topbar-right {
-            display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+        .presence-badge.absent {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+            color: var(--text-dim);
         }
-        .slider-group {
-            display: flex; align-items: center; gap: 6px; font-size: 0.8rem;
+
+        /* ── Bottom bar ── */
+        .bottombar {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 2rem;
+            padding: 1rem 2rem;
         }
-        .slider-group input[type=range] {
-            accent-color: var(--accent); cursor: pointer; width: 100px;
+        .mode-pills {
+            display: flex; gap: 0.5rem;
         }
-        .btn {
+        .mode-pill {
+            padding: 0.35rem 1rem;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            cursor: pointer;
             background: transparent;
-            border: 1px solid var(--accent);
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            transition: all 0.3s;
+        }
+        .mode-pill.active {
+            border-color: var(--green);
+            color: var(--green);
+            background: rgba(0, 255, 136, 0.08);
+        }
+        .mode-pill:hover { border-color: var(--amber); color: var(--amber); }
+        .mode-pill:active { transform: scale(0.96); }
+        .kb-hints {
+            display: flex; gap: 1rem; font-size: 0.65rem; color: var(--text-dim);
+        }
+        .kb-hint kbd {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 3px;
+            padding: 1px 5px;
+            font-family: var(--mono);
+            margin-right: 3px;
+        }
+
+        /* ── Settings drawer ── */
+        .settings-drawer {
+            position: absolute;
+            top: 4rem; right: 2rem;
+            width: 240px;
+            padding: 1.25rem;
+            display: none;
+            z-index: 20;
+        }
+        .settings-drawer.open { display: block; }
+        .setting-row {
+            margin-bottom: 1rem;
+        }
+        .setting-label {
+            font-size: 0.65rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.4rem;
+        }
+        .setting-row input[type=range] {
+            width: 100%;
+            accent-color: var(--accent);
+            cursor: pointer;
+        }
+        .setting-val {
+            font-size: 0.8rem;
             color: var(--accent);
-            padding: 0.35rem 0.7rem;
+            float: right;
+        }
+        .toggle-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+        }
+        .toggle-btn {
+            background: transparent;
+            border: 1px solid var(--panel-border);
+            color: var(--text-dim);
+            padding: 0.25rem 0.6rem;
             border-radius: 4px;
             cursor: pointer;
             font-family: var(--mono);
-            font-size: 0.75rem;
+            font-size: 0.7rem;
             transition: all 0.3s;
         }
-        .btn:hover { background: rgba(0,212,255,0.1); }
-        .btn:active { transform: scale(0.96); }
-
-        /* ── Dashboard Grid ── */
-        .dashboard {
-            display: grid;
-            grid-template-columns: 280px 1fr 280px;
-            gap: 1rem;
-            padding: 1rem;
-            flex: 1;
-            min-height: 0;
-        }
-        .panel {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-        }
-        .panel-title {
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 1px solid var(--border);
+        .toggle-btn.on {
+            border-color: var(--green);
+            color: var(--green);
         }
 
-        /* ── Column 1: Vitals ── */
-        .vitals { align-items: center; }
-        .ssid-tag {
-            font-size: 0.85rem;
-            color: var(--accent);
-            margin-bottom: 1rem;
-        }
-
-        /* Gauge */
-        .gauge-wrap {
-            position: relative;
-            width: 160px; height: 160px;
-            margin-bottom: 0.75rem;
-        }
-        .gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-        .gauge-track { fill: none; stroke: var(--border); stroke-width: 10; }
-        .gauge-bar {
-            fill: none; stroke: var(--green); stroke-width: 10;
-            stroke-linecap: round;
-            stroke-dasharray: 408; /* 2πr, r=65 */
-            stroke-dashoffset: 408;
-            transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;
-        }
-        .gauge-label {
+        /* ── Offline banner ── */
+        .offline-banner {
             position: absolute;
             top: 50%; left: 50%;
             transform: translate(-50%, -50%);
-            text-align: center;
-        }
-        .gauge-label .big { font-size: 28px; font-weight: 700; }
-        .gauge-label .sub { font-size: 0.7rem; color: var(--text-dim); }
-
-        /* Mini gauges */
-        .mini-gauges {
-            display: flex; gap: 1rem;
-            margin: 0.75rem 0;
-        }
-        .mini-gauge-wrap {
-            position: relative;
-            width: 90px; height: 90px;
-        }
-        .mini-gauge-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
-        .mini-track { fill: none; stroke: var(--border); stroke-width: 6; }
-        .mini-bar {
-            fill: none; stroke: var(--accent); stroke-width: 6;
-            stroke-linecap: round;
-            stroke-dasharray: 220; /* 2πr, r=35 */
-            stroke-dashoffset: 220;
-            transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;
-        }
-        .mini-label {
-            position: absolute; top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            text-align: center;
-        }
-        .mini-label .val { font-size: 16px; font-weight: 700; }
-        .mini-label .tag { font-size: 0.55rem; color: var(--text-dim); }
-
-        .calibrating-spinner {
-            color: var(--text-dim);
-            animation: blink 1.2s infinite;
-        }
-        @keyframes blink {
-            0%,100% { opacity: 1; }
-            50% { opacity: 0.3; }
-        }
-
-        /* Status Badge */
-        .badge {
-            padding: 0.5rem 1.2rem;
-            border-radius: 20px;
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            background: rgba(255, 68, 68, 0.15);
+            border: 1px solid rgba(255, 68, 68, 0.3);
+            color: var(--alert);
             font-size: 0.85rem;
             font-weight: 700;
-            text-align: center;
-            margin-top: auto;
-            transition: all 0.3s;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-        }
-        .badge.motion {
-            background: rgba(255,68,68,0.15);
-            border-color: var(--alert);
-            color: var(--alert);
-            animation: pulse-badge 1s infinite;
-        }
-        .badge.vital {
-            background: rgba(0,212,255,0.1);
-            border-color: var(--accent);
-            color: var(--accent);
-            animation: pulse-badge 1.5s infinite;
-        }
-        @keyframes pulse-badge {
-            0% { box-shadow: 0 0 0 0 rgba(255,68,68,0.5); }
-            70% { box-shadow: 0 0 0 8px rgba(255,68,68,0); }
-            100% { box-shadow: 0 0 0 0 rgba(255,68,68,0); }
-        }
-
-        /* ── Column 2: Charts ── */
-        .charts-col { gap: 1rem; }
-        .chart-box {
-            position: relative;
-            height: 200px;
-            transition: background 0.3s;
-        }
-        .chart-box.flash { background: rgba(255,68,68,0.12); }
-
-        /* CSI Heatmap */
-        .heatmap-section { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-        .heatmap-title {
-            font-size: 0.7rem; color: var(--text-dim);
-            text-transform: uppercase; letter-spacing: 1px;
-            margin-bottom: 0.5rem;
-        }
-        .heatmap-canvas-wrap {
-            flex: 1; position: relative; min-height: 120px;
-        }
-        #csi-heatmap {
-            width: 100%; height: 100%;
-            border-radius: 4px;
-            image-rendering: pixelated;
-        }
-
-        /* Mini Stats */
-        .stat-row {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.5rem;
-            margin-top: 0.75rem;
-        }
-        .stat-card {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.6rem;
-            text-align: center;
-        }
-        .stat-card .lbl { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; }
-        .stat-card .val { font-size: 1rem; font-weight: 700; margin-top: 0.25rem; }
-
-        /* ── Column 3: Log + Controls ── */
-        .log-col { gap: 0.75rem; }
-        .control-group {
-            display: flex; flex-direction: column; gap: 0.5rem;
-            padding-bottom: 0.75rem;
-            border-bottom: 1px solid var(--border);
-        }
-        .control-row {
-            display: flex; align-items: center; justify-content: space-between;
-            font-size: 0.8rem;
-        }
-        .sim-toggle {
-            display: flex; align-items: center; gap: 8px;
-        }
-        .sim-toggle input[type=checkbox] {
-            accent-color: var(--accent); cursor: pointer;
-            width: 16px; height: 16px;
-        }
-        .sim-badge {
-            background: var(--accent);
-            color: var(--bg);
-            font-size: 0.6rem;
-            font-weight: 700;
-            padding: 2px 6px;
-            border-radius: 3px;
+            letter-spacing: 0.1em;
             display: none;
+            z-index: 30;
         }
-        .sim-badge.active { display: inline; }
 
-        .log-box {
+        /* ── Event log overlay (toggled) ── */
+        .log-drawer {
+            position: absolute;
+            bottom: 6rem; left: 50%;
+            transform: translateX(-50%);
+            width: 400px;
+            max-height: 250px;
+            padding: 1rem;
+            display: none;
+            flex-direction: column;
+        }
+        .log-drawer.open { display: flex; }
+        .log-scroll {
             flex: 1;
             overflow-y: auto;
+            font-size: 0.7rem;
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            font-size: 0.75rem;
-            min-height: 0;
+            gap: 3px;
+            margin-bottom: 0.75rem;
         }
         .log-entry {
-            padding: 4px 8px;
-            border-left: 2px solid var(--accent);
-            color: var(--accent);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            padding: 3px 6px;
+            border-left: 2px solid var(--green);
+            color: var(--green);
         }
-        .log-entry.alert {
-            border-color: var(--alert);
-            color: var(--alert);
-        }
-        .log-entry.breath {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .log-actions {
+        .log-entry.alert { border-color: var(--alert); color: var(--alert); }
+        .log-btns {
             display: flex; gap: 0.5rem;
         }
-        .log-actions .btn { flex: 1; text-align: center; }
-
-        /* HW Status card */
-        .hw-card {
-            background: rgba(0,0,0,0.3);
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 0.6rem;
-            text-align: center;
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            margin-top: auto;
-        }
-        .hw-card .mode {
-            color: var(--accent);
-            font-weight: 700;
-        }
+        .log-btns .pill { flex: 1; text-align: center; }
 
         /* Scrollbar */
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,200,100,0.15); border-radius: 2px; }
 
-        /* Responsive */
-        @media (max-width: 900px) {
-            .dashboard {
-                grid-template-columns: 1fr;
-            }
-            .topbar { justify-content: center; text-align: center; }
+        @media (max-width: 768px) {
+            .panel-vitals, .panel-signal { position: static; width: 100%; }
+            .ui-layer { overflow-y: auto; }
+            .bottombar { flex-direction: column; gap: 0.5rem; }
+            .kb-hints { display: none; }
+            .top-desc { display: none; }
         }
     </style>
 </head>
 <body>
+<canvas id="scene3d"></canvas>
+<div class="overlay-fx"></div>
+<div class="scanlines"></div>
 
-<div id="offline-banner" class="offline-banner">⚠ SERVER OFFLINE — RECONNECTING…</div>
+<div class="ui-layer">
+    <!-- Offline -->
+    <div id="offline-banner" class="offline-banner">⚠ SERVER OFFLINE — RECONNECTING…</div>
 
-<nav class="topbar">
-    <div class="topbar-brand">[ HUMAN WIFI DETECTOR v2 ]</div>
-    <div class="topbar-center">
-        <div id="conn-dot" class="dot"></div>
-        <span id="ssid-top">Scanning…</span>
+    <!-- Top bar -->
+    <header class="topbar">
+        <div class="brand">
+            <div class="brand-name"><span>π</span> HumanSense</div>
+            <div class="brand-sub">WiFi Sensing Observatory</div>
+        </div>
+        <div class="top-controls">
+            <div id="pill-demo" class="pill pill-demo">SIM</div>
+            <div id="pill-mode" class="pill pill-mode">Motion</div>
+            <div id="gear-btn" class="gear-btn" aria-label="Settings">⚙</div>
+        </div>
+    </header>
+
+    <div class="top-desc">
+        <div id="scenario-desc" class="scenario-label">Presence detection and vital sign monitoring from WiFi signal disturbances.</div>
     </div>
-    <div class="topbar-right">
-        <div class="slider-group">
-            <span id="sens-label">SENSITIVITY: 2.0σ</span>
+
+    <!-- Settings drawer -->
+    <div id="settings-drawer" class="glass settings-drawer">
+        <div class="panel-header">Settings</div>
+        <div class="setting-row">
+            <div class="setting-label">Z-Score Threshold <span id="thresh-val" class="setting-val">2.0σ</span></div>
             <input type="range" id="thresh-slider" min="1.0" max="4.0" step="0.1" value="2.0">
         </div>
-        <button id="btn-mute" class="btn">🔔 BEEP ON</button>
+        <div class="setting-row">
+            <div class="toggle-row">
+                <span>Audio Alert</span>
+                <button id="btn-mute" class="toggle-btn on">🔔 ON</button>
+            </div>
+        </div>
+        <div class="setting-row">
+            <div class="toggle-row">
+                <span>Simulation</span>
+                <button id="btn-sim" class="toggle-btn">OFF</button>
+            </div>
+        </div>
+        <div class="setting-row">
+            <div class="toggle-row">
+                <span>Event Log</span>
+                <button id="btn-log-toggle" class="toggle-btn">SHOW</button>
+            </div>
+        </div>
     </div>
-</nav>
 
-<main class="dashboard">
-    <!-- ── Col 1: Vitals ── -->
-    <section class="panel vitals">
-        <div class="panel-title">Vitals</div>
-        <div id="ssid-display" class="ssid-tag">---</div>
-
-        <!-- Main gauge -->
-        <div class="gauge-wrap">
-            <svg class="gauge-svg" viewBox="0 0 160 160">
-                <circle class="gauge-track" cx="80" cy="80" r="65"></circle>
-                <circle id="main-bar" class="gauge-bar" cx="80" cy="80" r="65"></circle>
-            </svg>
-            <div class="gauge-label">
-                <div class="big"><span id="sig-val">0</span>%</div>
-                <div class="sub">SIGNAL</div>
+    <!-- Left panel: Vitals -->
+    <section class="glass panel-vitals">
+        <div class="panel-header">Vital Signs</div>
+        <div class="vital-row">
+            <div><span class="vital-icon">❤️</span><span class="vital-label">Heart Rate</span></div>
+            <div class="vital-value">
+                <span id="v-hr" class="vital-num amber">--</span>
+                <span class="vital-unit">BPM</span>
             </div>
+            <div class="vital-bar"><div id="bar-hr" class="vital-bar-fill" style="width:0%; background: var(--amber)"></div></div>
         </div>
-
-        <!-- Mini gauges: Breathing + Heart -->
-        <div class="mini-gauges">
-            <div class="mini-gauge-wrap">
-                <svg class="mini-gauge-svg" viewBox="0 0 90 90">
-                    <circle class="mini-track" cx="45" cy="45" r="35"></circle>
-                    <circle id="breath-bar" class="mini-bar" cx="45" cy="45" r="35"></circle>
-                </svg>
-                <div class="mini-label">
-                    <div id="breath-val" class="val calibrating-spinner">--</div>
-                    <div class="tag">BPM</div>
-                </div>
+        <div class="vital-row">
+            <div><span class="vital-icon">🫁</span><span class="vital-label">Respiration</span></div>
+            <div class="vital-value">
+                <span id="v-resp" class="vital-num green">--</span>
+                <span class="vital-unit">RPM</span>
             </div>
-            <div class="mini-gauge-wrap">
-                <svg class="mini-gauge-svg" viewBox="0 0 90 90">
-                    <circle class="mini-track" cx="45" cy="45" r="35"></circle>
-                    <circle id="hr-bar" class="mini-bar" cx="45" cy="45" r="35" style="stroke: var(--alert)"></circle>
-                </svg>
-                <div class="mini-label">
-                    <div id="hr-val" class="val calibrating-spinner">--</div>
-                    <div class="tag">HR</div>
-                </div>
-            </div>
+            <div class="vital-bar"><div id="bar-resp" class="vital-bar-fill" style="width:0%; background: var(--green)"></div></div>
         </div>
-
-        <div id="status-badge" class="badge">● IDLE</div>
-    </section>
-
-    <!-- ── Col 2: Charts ── -->
-    <section class="panel charts-col">
-        <div class="panel-title">Signal Visualization</div>
-
-        <div id="chart-box" class="chart-box">
-            <canvas id="rssi-chart"></canvas>
-        </div>
-
-        <div class="heatmap-section">
-            <div class="heatmap-title">Subcarrier Amplitude Map <span id="sim-indicator" class="sim-badge">[SIM]</span></div>
-            <div class="heatmap-canvas-wrap">
-                <canvas id="csi-heatmap"></canvas>
+        <div class="vital-row">
+            <div><span class="vital-icon">📡</span><span class="vital-label">Confidence</span></div>
+            <div class="vital-value">
+                <span id="v-conf" class="vital-num accent" style="color:var(--accent)">--</span>
+                <span class="vital-unit">%</span>
             </div>
-        </div>
-
-        <div class="stat-row">
-            <div class="stat-card">
-                <div class="lbl">Current</div>
-                <div id="s-current" class="val">0%</div>
-            </div>
-            <div class="stat-card">
-                <div class="lbl">Z-Score</div>
-                <div id="s-zscore" class="val">0.00</div>
-            </div>
-            <div class="stat-card">
-                <div class="lbl">Motion Pwr</div>
-                <div id="s-motpwr" class="val">0.00</div>
-            </div>
-            <div class="stat-card">
-                <div class="lbl">Breath BPM</div>
-                <div id="s-bpm" class="val">--</div>
-            </div>
+            <div class="vital-bar"><div id="bar-conf" class="vital-bar-fill" style="width:0%; background: var(--accent)"></div></div>
         </div>
     </section>
 
-    <!-- ── Col 3: Log + Controls ── -->
-    <aside class="panel log-col">
-        <div class="panel-title">Controls & Log</div>
-
-        <div class="control-group">
-            <div class="control-row">
-                <span>Z-Threshold</span>
-                <span id="ctrl-thresh-val">2.0σ</span>
-            </div>
-            <input type="range" id="ctrl-thresh" min="1.0" max="4.0" step="0.1" value="2.0"
-                   style="accent-color: var(--accent); width: 100%; cursor: pointer;">
-            <div class="sim-toggle">
-                <input type="checkbox" id="sim-check">
-                <label for="sim-check">Simulation Mode</label>
-            </div>
+    <!-- Right panel: WiFi Signal -->
+    <section class="glass panel-signal">
+        <div class="panel-header">WiFi Signal</div>
+        <div class="sig-row"><span class="sig-label">RSSI</span><span id="s-rssi" class="sig-val">0%</span></div>
+        <div class="sig-row"><span class="sig-label">Variance</span><span id="s-var" class="sig-val">0.00</span></div>
+        <div class="sig-row"><span class="sig-label">Motion</span><span id="s-motion" class="sig-val">0.00</span></div>
+        <div class="sig-row">
+            <span class="sig-label">Persons</span>
+            <span class="sig-val">
+                <span id="s-persons">0</span>
+                <span class="person-dots" id="person-dots">
+                    <span class="pdot"></span><span class="pdot"></span><span class="pdot"></span>
+                    <span class="pdot"></span><span class="pdot"></span><span class="pdot"></span>
+                    <span class="pdot"></span><span class="pdot"></span>
+                </span>
+            </span>
         </div>
-
-        <div class="log-box" id="log-box"></div>
-
-        <div class="log-actions">
-            <button id="btn-clear" class="btn">CLEAR</button>
-            <button id="btn-export" class="btn">EXPORT CSV</button>
+        <div class="sparkline-wrap"><canvas id="sparkline"></canvas></div>
+        <div class="presence-section">
+            <div class="presence-label">Presence</div>
+            <div id="presence-badge" class="presence-badge absent">ABSENT</div>
         </div>
+    </section>
 
-        <div class="hw-card" id="hw-card">
-            <span class="mode" id="hw-mode">RSSI Mode</span><br>
-            <span>Laptop Wi-Fi</span>
+    <!-- Event log drawer -->
+    <div id="log-drawer" class="glass log-drawer">
+        <div class="panel-header">Event Log</div>
+        <div id="log-scroll" class="log-scroll"></div>
+        <div class="log-btns">
+            <button id="btn-clear" class="pill pill-mode">CLEAR</button>
+            <button id="btn-export" class="pill pill-mode">EXPORT CSV</button>
         </div>
-    </aside>
-</main>
+    </div>
+
+    <!-- Bottom bar -->
+    <footer class="bottombar">
+        <div class="mode-pills">
+            <button id="mode-motion" class="mode-pill active">MOTION</button>
+            <button id="mode-breath" class="mode-pill">VITAL</button>
+        </div>
+        <div class="kb-hints">
+            <span class="kb-hint"><kbd>S</kbd> Settings</span>
+            <span class="kb-hint"><kbd>L</kbd> Log</span>
+            <span class="kb-hint"><kbd>M</kbd> Mute</span>
+            <span class="kb-hint"><kbd>Space</kbd> Sim</span>
+        </div>
+    </footer>
+</div>
 
 <script>
-// ────────────────────────────────────────────────────
-// Audio
-// ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// THREE.JS SCENE
+// ═══════════════════════════════════════════════════
+const canvas = document.getElementById('scene3d');
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0a0807, 0.06);
+
+const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
+camera.position.set(0, 2.2, 5.5);
+camera.lookAt(0, 0.9, 0);
+
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x0a0807);
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+// Lights
+scene.add(new THREE.AmbientLight(0x1a1510, 0.4));
+const pointLight = new THREE.PointLight(0x00d4ff, 0.6, 20);
+pointLight.position.set(2, 5, 3);
+scene.add(pointLight);
+const groundLight = new THREE.PointLight(0x00ff88, 0.3, 8);
+groundLight.position.set(0, 0.1, 0);
+scene.add(groundLight);
+
+// ── Wireframe Spheres ──
+const wireMat = new THREE.MeshBasicMaterial({ color: 0x1a3a6c, wireframe: true, transparent: true, opacity: 0.25 });
+const sphere1 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.5, 2), wireMat);
+sphere1.position.set(-1, 3.5, -3);
+scene.add(sphere1);
+const sphere2 = new THREE.Mesh(new THREE.IcosahedronGeometry(1.8, 2), wireMat.clone());
+sphere2.material.opacity = 0.15;
+sphere2.position.set(2, 2.5, -2);
+scene.add(sphere2);
+
+// ── Grid floor ──
+const grid = new THREE.GridHelper(20, 40, 0x1a2a1a, 0x0a150a);
+grid.position.y = 0;
+scene.add(grid);
+
+// ── Ground dots (scattered like RuView) ──
+const dotGroup = new THREE.Group();
+for (let x = -5; x <= 5; x += 0.6) {
+    for (let z = -5; z <= 5; z += 0.6) {
+        if (Math.random() > 0.25) continue;
+        const dot = new THREE.Mesh(
+            new THREE.BoxGeometry(0.07, 0.01, 0.07),
+            new THREE.MeshBasicMaterial({
+                color: Math.random() > 0.7 ? 0x00ff88 : 0x1a3a2a,
+                transparent: true,
+                opacity: 0.2 + Math.random() * 0.5
+            })
+        );
+        dot.position.set(x + (Math.random() - 0.5) * 0.4, 0.005, z + (Math.random() - 0.5) * 0.4);
+        dotGroup.add(dot);
+    }
+}
+scene.add(dotGroup);
+
+// ── Ground glow disc ──
+const glowDisc = new THREE.Mesh(
+    new THREE.CircleGeometry(0.8, 32),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.08, side: THREE.DoubleSide })
+);
+glowDisc.rotation.x = -Math.PI / 2;
+glowDisc.position.y = 0.01;
+scene.add(glowDisc);
+
+// ── Scan ring (pulses on motion) ──
+const scanRing = new THREE.Mesh(
+    new THREE.RingGeometry(0.5, 0.55, 64),
+    new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0, side: THREE.DoubleSide })
+);
+scanRing.rotation.x = -Math.PI / 2;
+scanRing.position.y = 0.02;
+scene.add(scanRing);
+let scanPulse = 0;
+
+// ── Body glow column ──
+const bodyGlow = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 0.12, 1.5, 8),
+    new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.04 })
+);
+bodyGlow.position.y = 0.85;
+scene.add(bodyGlow);
+
+// ── Human Skeleton (17 keypoints) ──
+const KP = [
+    [0, 1.68, 0.04],    // 0 nose
+    [-0.03, 1.72, 0.06], // 1 l_eye
+    [0.03, 1.72, 0.06],  // 2 r_eye
+    [-0.07, 1.70, 0],    // 3 l_ear
+    [0.07, 1.70, 0],     // 4 r_ear
+    [-0.2, 1.45, 0],     // 5 l_shoulder
+    [0.2, 1.45, 0],      // 6 r_shoulder
+    [-0.3, 1.15, 0.02],  // 7 l_elbow
+    [0.3, 1.15, 0.02],   // 8 r_elbow
+    [-0.3, 0.88, 0.04],  // 9 l_wrist
+    [0.3, 0.88, 0.04],   // 10 r_wrist
+    [-0.1, 0.92, 0],     // 11 l_hip
+    [0.1, 0.92, 0],      // 12 r_hip
+    [-0.12, 0.48, 0.02], // 13 l_knee
+    [0.12, 0.48, 0.02],  // 14 r_knee
+    [-0.12, 0.05, 0.04], // 15 l_ankle
+    [0.12, 0.05, 0.04],  // 16 r_ankle
+];
+
+const BONES = [
+    [0,1],[0,2],[1,3],[2,4],
+    [0,5],[0,6],[5,6],
+    [5,7],[7,9],[6,8],[8,10],
+    [5,11],[6,12],[11,12],
+    [11,13],[13,15],[12,14],[14,16]
+];
+
+// Keypoint spheres
+const kpMeshes = [];
+const kpGeo = new THREE.SphereGeometry(0.02, 8, 8);
+const kpGlowGeo = new THREE.SphereGeometry(0.04, 8, 8);
+const kpMat = new THREE.MeshBasicMaterial({ color: 0xff6633 });
+const kpGlowMat = new THREE.MeshBasicMaterial({ color: 0xff6633, transparent: true, opacity: 0.2 });
+
+KP.forEach(pos => {
+    const m = new THREE.Mesh(kpGeo, kpMat);
+    m.position.set(...pos);
+    scene.add(m);
+    const g = new THREE.Mesh(kpGlowGeo, kpGlowMat);
+    g.position.set(...pos);
+    scene.add(g);
+    kpMeshes.push({ core: m, glow: g, base: [...pos] });
+});
+
+// Bone lines
+const boneMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.7 });
+const boneLines = [];
+BONES.forEach(([a, b]) => {
+    const geo = new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(...KP[a]),
+        new THREE.Vector3(...KP[b])
+    ]);
+    const line = new THREE.Line(geo, boneMat);
+    scene.add(line);
+    boneLines.push({ line, a, b });
+});
+
+// ── Floating particles ──
+const partCount = 150;
+const partGeo = new THREE.BufferGeometry();
+const partPos = new Float32Array(partCount * 3);
+for (let i = 0; i < partCount; i++) {
+    partPos[i*3] = (Math.random()-0.5)*12;
+    partPos[i*3+1] = Math.random()*6;
+    partPos[i*3+2] = (Math.random()-0.5)*12;
+}
+partGeo.setAttribute('position', new THREE.BufferAttribute(partPos, 3));
+const particles = new THREE.Points(partGeo, new THREE.PointsMaterial({
+    color: 0x00d4ff, size: 0.03, transparent: true, opacity: 0.4
+}));
+scene.add(particles);
+
+// ── Animation state ──
+let breathPhase = 0;
+let figurePresent = false;
+let motionFlash = 0;
+
+function animateScene(t) {
+    requestAnimationFrame(animateScene);
+    const sec = t * 0.001;
+
+    // Camera slow orbit
+    camera.position.x = Math.sin(sec * 0.05) * 0.8;
+    camera.position.z = 5.5 + Math.cos(sec * 0.05) * 0.5;
+    camera.lookAt(0, 0.9, 0);
+
+    // Wireframe rotation
+    sphere1.rotation.y += 0.001;
+    sphere1.rotation.x += 0.0005;
+    sphere2.rotation.y -= 0.0015;
+    sphere2.rotation.z += 0.0008;
+
+    // Breathing animation on skeleton
+    breathPhase += 0.03;
+    const breathScale = Math.sin(breathPhase) * 0.015;
+    kpMeshes.forEach((kp, i) => {
+        const base = kp.base;
+        let dx = 0, dy = 0;
+        // Expand torso on breath
+        if ([5,6,11,12].includes(i)) dx = base[0] > 0 ? breathScale : -breathScale;
+        if ([5,6].includes(i)) dy = breathScale * 0.5;
+        kp.core.position.set(base[0]+dx, base[1]+dy, base[2]);
+        kp.glow.position.copy(kp.core.position);
+    });
+
+    // Update bone line positions
+    boneLines.forEach(({ line, a, b }) => {
+        const posArray = line.geometry.attributes.position.array;
+        const pa = kpMeshes[a].core.position;
+        const pb = kpMeshes[b].core.position;
+        posArray[0]=pa.x; posArray[1]=pa.y; posArray[2]=pa.z;
+        posArray[3]=pb.x; posArray[4]=pb.y; posArray[5]=pb.z;
+        line.geometry.attributes.position.needsUpdate = true;
+    });
+
+    // Figure visibility
+    const vis = figurePresent ? 1 : 0.15;
+    kpMat.opacity = vis;
+    boneMat.opacity = vis * 0.7;
+    bodyGlow.material.opacity = vis * 0.04;
+
+    // Ground glow pulse
+    glowDisc.material.opacity = 0.06 + Math.sin(sec * 2) * 0.03;
+
+    // Scan ring pulse
+    if (scanPulse > 0) {
+        scanPulse -= 0.02;
+        const s = 1 + (1 - scanPulse) * 3;
+        scanRing.scale.set(s, s, 1);
+        scanRing.material.opacity = scanPulse * 0.5;
+    }
+
+    // Particle drift
+    const pArr = particles.geometry.attributes.position.array;
+    for (let i = 0; i < partCount; i++) {
+        pArr[i*3+1] += 0.002;
+        if (pArr[i*3+1] > 6) pArr[i*3+1] = 0;
+    }
+    particles.geometry.attributes.position.needsUpdate = true;
+
+    // Motion flash on ground dots
+    if (motionFlash > 0) {
+        motionFlash -= 0.02;
+        groundLight.intensity = 0.3 + motionFlash * 0.5;
+    } else {
+        groundLight.intensity = 0.3;
+    }
+
+    renderer.render(scene, camera);
+}
+animateScene(0);
+
+// ═══════════════════════════════════════════════════
+// AUDIO
+// ═══════════════════════════════════════════════════
 let audioCtx;
 let beepOn = localStorage.getItem('beep') !== 'false';
 const btnMute = document.getElementById('btn-mute');
 
-function syncMuteBtn() {
-    btnMute.innerText = beepOn ? '🔔 BEEP ON' : '🔕 MUTE';
-}
-syncMuteBtn();
-
-btnMute.addEventListener('click', () => {
-    beepOn = !beepOn;
-    localStorage.setItem('beep', beepOn);
-    syncMuteBtn();
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-});
+function syncMute() { btnMute.innerText = beepOn ? '🔔 ON' : '🔕 OFF'; btnMute.classList.toggle('on', beepOn); }
+syncMute();
+btnMute.addEventListener('click', () => { beepOn = !beepOn; localStorage.setItem('beep', beepOn); syncMute(); });
 
 function playBeep() {
     if (!beepOn) return;
     if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.setValueAtTime(220, audioCtx.currentTime);
-    g.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    osc.connect(g); g.connect(audioCtx.destination);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+    const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(220, audioCtx.currentTime);
+    g.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(); o.stop(audioCtx.currentTime + 0.1);
 }
 
-// ────────────────────────────────────────────────────
-// Chart.js — RSSI
-// ────────────────────────────────────────────────────
-const MAX_PTS = 60;
-const chartData = Array(MAX_PTS).fill(null);
-let adaptMean = null;
-
-const rssiChart = new Chart(document.getElementById('rssi-chart').getContext('2d'), {
-    type: 'line',
-    data: {
-        labels: Array(MAX_PTS).fill(''),
-        datasets: [{
-            label: 'RSSI %',
-            data: chartData,
-            borderColor: '#00d4ff',
-            borderWidth: 2,
-            tension: 0.3,
-            pointRadius: 0,
-            fill: false
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: { duration: 0 },
-        scales: {
-            x: { display: false },
-            y: {
-                min: 0, max: 100,
-                grid: { color: '#1e293b' },
-                ticks: { color: '#64748b', font: { size: 10 } }
-            }
-        },
-        plugins: { legend: { display: false } }
-    },
-    plugins: [{
-        id: 'meanLine',
-        beforeDraw: (chart) => {
-            if (adaptMean === null) return;
-            const { ctx: c, chartArea: { left, right }, scales: { y } } = chart;
-            const yp = y.getPixelForValue(adaptMean);
-            c.save();
-            c.beginPath();
-            c.moveTo(left, yp); c.lineTo(right, yp);
-            c.lineWidth = 1; c.strokeStyle = '#64748b'; c.setLineDash([5, 5]);
-            c.stroke(); c.restore();
-        }
-    }]
-});
-
-// ────────────────────────────────────────────────────
-// CSI Heatmap
-// ────────────────────────────────────────────────────
-const SUBS = 56, TIME_COLS = 30;
-let heatmapGrid = [];
-for (let r = 0; r < SUBS; r++) {
-    heatmapGrid.push(new Array(TIME_COLS).fill(0));
-}
-
-const hmCanvas = document.getElementById('csi-heatmap');
-
-function renderHeatmap() {
-    const w = hmCanvas.clientWidth;
-    const h = hmCanvas.clientHeight;
-    hmCanvas.width = w;
-    hmCanvas.height = h;
-    const ctx = hmCanvas.getContext('2d');
-    const cw = w / TIME_COLS;
-    const ch = h / SUBS;
-
-    for (let r = 0; r < SUBS; r++) {
-        for (let c = 0; c < TIME_COLS; c++) {
-            const v = heatmapGrid[r][c]; // expected 0–100
-            const norm = Math.min(v / 80, 1);
-            // dark blue → cyan → white
-            const rr = Math.round(norm * norm * 255);
-            const gg = Math.round(norm * 255);
-            const bb = Math.round(128 + norm * 127);
-            ctx.fillStyle = `rgb(${rr},${gg},${bb})`;
-            ctx.fillRect(c * cw, r * ch, cw + 1, ch + 1);
-        }
+// ═══════════════════════════════════════════════════
+// SPARKLINE
+// ═══════════════════════════════════════════════════
+const sparkCanvas = document.getElementById('sparkline');
+const sparkData = [];
+function drawSparkline() {
+    const ctx = sparkCanvas.getContext('2d');
+    const w = sparkCanvas.width = sparkCanvas.clientWidth * 2;
+    const h = sparkCanvas.height = sparkCanvas.clientHeight * 2;
+    ctx.clearRect(0,0,w,h);
+    if (sparkData.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = '#00d4ff';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < sparkData.length; i++) {
+        const x = (i / (sparkData.length-1)) * w;
+        const y = h - (sparkData[i] / 100) * h;
+        i === 0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
     }
+    ctx.stroke();
 }
 
-function pushHeatmapColumn(amplitudes) {
-    for (let r = 0; r < SUBS; r++) {
-        heatmapGrid[r].shift();
-        heatmapGrid[r].push(amplitudes[r] || 0);
-    }
-    renderHeatmap();
-}
+// ═══════════════════════════════════════════════════
+// UI REFS
+// ═══════════════════════════════════════════════════
+const $rssi = document.getElementById('s-rssi');
+const $var = document.getElementById('s-var');
+const $motion = document.getElementById('s-motion');
+const $persons = document.getElementById('s-persons');
+const $personDots = document.querySelectorAll('.pdot');
+const $presence = document.getElementById('presence-badge');
+const $hr = document.getElementById('v-hr');
+const $resp = document.getElementById('v-resp');
+const $conf = document.getElementById('v-conf');
+const $barHr = document.getElementById('bar-hr');
+const $barResp = document.getElementById('bar-resp');
+const $barConf = document.getElementById('bar-conf');
+const $offline = document.getElementById('offline-banner');
+const $connDot = document.querySelector('.pill-demo');
+const $logScroll = document.getElementById('log-scroll');
+const $scenarioDesc = document.getElementById('scenario-desc');
 
-// ────────────────────────────────────────────────────
-// Client-side simulation
-// ────────────────────────────────────────────────────
-let clientSim = false;
-const simCheck = document.getElementById('sim-check');
-const simIndicator = document.getElementById('sim-indicator');
-
-simCheck.addEventListener('change', (e) => {
-    clientSim = e.target.checked;
-    simIndicator.classList.toggle('active', clientSim);
-});
-
-function getSimulatedCSI() {
-    const t = performance.now() / 1000;
-    const amp = [], ph = [];
-    for (let i = 0; i < 56; i++) {
-        const base = 50 + 5 * Math.sin(2 * Math.PI * i / 56);
-        const breath = 3 * Math.sin(2 * Math.PI * 0.25 * t + i * 0.1);
-        const hr = 0.8 * Math.sin(2 * Math.PI * 1.2 * t + i * 0.05);
-        const noise = (Math.random() - 0.5) * 3;
-        amp.push(Math.abs(base + breath + hr + noise));
-        ph.push(Math.random() * 2 * Math.PI - Math.PI);
-    }
-    return {
-        subcarriers: 56,
-        amplitude: amp,
-        phase: ph,
-        breathing_bpm: 15 + (Math.random() - 0.5) * 2,
-        heart_rate_bpm: 0,
-        motion_power: 5 + Math.random() * 2,
-        timestamp: Date.now() / 1000
-    };
-}
-
-// ────────────────────────────────────────────────────
-// DOM refs
-// ────────────────────────────────────────────────────
-const connDot     = document.getElementById('conn-dot');
-const ssidTop     = document.getElementById('ssid-top');
-const ssidDisp    = document.getElementById('ssid-display');
-const sigVal      = document.getElementById('sig-val');
-const mainBar     = document.getElementById('main-bar');
-const breathVal   = document.getElementById('breath-val');
-const breathBar   = document.getElementById('breath-bar');
-const hrVal       = document.getElementById('hr-val');
-const hrBar       = document.getElementById('hr-bar');
-const statusBadge = document.getElementById('status-badge');
-const chartBox    = document.getElementById('chart-box');
-const offBanner   = document.getElementById('offline-banner');
-const sCurrent    = document.getElementById('s-current');
-const sZscore     = document.getElementById('s-zscore');
-const sMotpwr     = document.getElementById('s-motpwr');
-const sBpm        = document.getElementById('s-bpm');
-const logBox      = document.getElementById('log-box');
-const hwMode      = document.getElementById('hw-mode');
-const hwCard      = document.getElementById('hw-card');
-
-const threshSlider = document.getElementById('thresh-slider');
-const sensLabel    = document.getElementById('sens-label');
-const ctrlThresh   = document.getElementById('ctrl-thresh');
-const ctrlThreshVal = document.getElementById('ctrl-thresh-val');
-
-// ────────────────────────────────────────────────────
-// State
-// ────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
 let fails = 0;
+let clientSim = false;
+let lastMotionTs = 0;
+let presenceTimeout = null;
+let logEntries = [];
+const rawHist = [];
 let bootTime = Date.now();
 let isCalibrating = true;
-let lastMotionTs = 0;
-const rawHist = [];
-const logEntries = [];
-let csiAvailable = false;
-let lastBreathLog = 0;
 
-// ────────────────────────────────────────────────────
-// Threshold sliders (sync both)
-// ────────────────────────────────────────────────────
-function syncThresh(v) {
-    const f = parseFloat(v).toFixed(1);
-    sensLabel.innerText = `SENSITIVITY: ${f}σ`;
-    ctrlThreshVal.innerText = `${f}σ`;
-}
+// ═══════════════════════════════════════════════════
+// SETTINGS
+// ═══════════════════════════════════════════════════
+const gearBtn = document.getElementById('gear-btn');
+const settingsDrawer = document.getElementById('settings-drawer');
+gearBtn.addEventListener('click', () => settingsDrawer.classList.toggle('open'));
 
-threshSlider.addEventListener('input', e => {
-    ctrlThresh.value = e.target.value;
-    syncThresh(e.target.value);
+const threshSlider = document.getElementById('thresh-slider');
+const threshVal = document.getElementById('thresh-val');
+threshSlider.addEventListener('input', e => threshVal.innerText = parseFloat(e.target.value).toFixed(1) + 'σ');
+threshSlider.addEventListener('change', e => fetch(`http://localhost:5000/set_threshold/${e.target.value}`).catch(()=>{}));
+
+const btnSim = document.getElementById('btn-sim');
+const pillDemo = document.getElementById('pill-demo');
+btnSim.addEventListener('click', () => {
+    clientSim = !clientSim;
+    btnSim.innerText = clientSim ? 'ON' : 'OFF';
+    btnSim.classList.toggle('on', clientSim);
+    pillDemo.style.display = clientSim ? 'inline-block' : 'none';
 });
-ctrlThresh.addEventListener('input', e => {
-    threshSlider.value = e.target.value;
-    syncThresh(e.target.value);
+pillDemo.addEventListener('click', () => btnSim.click());
+
+const btnLogToggle = document.getElementById('btn-log-toggle');
+const logDrawer = document.getElementById('log-drawer');
+btnLogToggle.addEventListener('click', () => {
+    logDrawer.classList.toggle('open');
+    btnLogToggle.innerText = logDrawer.classList.contains('open') ? 'HIDE' : 'SHOW';
 });
 
-[threshSlider, ctrlThresh].forEach(el => {
-    el.addEventListener('change', e => {
-        fetch(`http://localhost:5000/set_threshold/${e.target.value}`).catch(() => {});
-    });
-});
-
-// ────────────────────────────────────────────────────
-// Gauge helpers
-// ────────────────────────────────────────────────────
-function setMainGauge(pct) {
-    sigVal.innerText = pct;
-    const circ = 2 * Math.PI * 65; // 408.4
-    mainBar.style.strokeDashoffset = circ - (pct / 100) * circ;
-    if (pct > 70) mainBar.style.stroke = 'var(--green)';
-    else if (pct >= 40) mainBar.style.stroke = 'var(--amber)';
-    else mainBar.style.stroke = 'var(--alert)';
-}
-
-function setMiniGauge(bar, valEl, value, min, max, unit) {
-    const circ = 2 * Math.PI * 35; // 220
-    const clamped = Math.max(min, Math.min(value, max));
-    const pct = (clamped - min) / (max - min);
-    bar.style.strokeDashoffset = circ - pct * circ;
-    valEl.innerText = value > 0 ? value.toFixed(0) : '--';
-    valEl.classList.toggle('calibrating-spinner', value <= 0);
-}
-
-// ────────────────────────────────────────────────────
-// Logging
-// ────────────────────────────────────────────────────
-function addLog(type, text) {
-    const now = new Date();
-    const ts = now.toLocaleTimeString('en-US', { hour12: false });
-    const div = document.createElement('div');
-    div.className = 'log-entry' + (type === 'motion' ? ' alert' : ' breath');
-    div.innerText = `[${ts}] ${text}`;
-    logBox.prepend(div);
-    logEntries.push({ time: ts, text });
-    if (logBox.children.length > 50) logBox.removeChild(logBox.lastChild);
-}
-
-document.getElementById('btn-clear').addEventListener('click', () => { logBox.innerHTML = ''; });
+document.getElementById('btn-clear').addEventListener('click', () => { $logScroll.innerHTML = ''; });
 document.getElementById('btn-export').addEventListener('click', () => {
     if (!logEntries.length) return;
     let csv = 'Time,Event\n';
-    logEntries.forEach(e => { csv += `${e.time},"${e.text}"\n`; });
-    const blob = new Blob([csv], { type: 'text/csv' });
+    logEntries.forEach(e => csv += `${e.time},"${e.text}"\n`);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = 'csi_log.csv';
-    a.click();
+    a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'}));
+    a.download = 'sensing_log.csv'; a.click();
 });
 
-// ────────────────────────────────────────────────────
-// Main polling loop
-// ────────────────────────────────────────────────────
+// Mode pills
+document.getElementById('mode-motion').addEventListener('click', function() {
+    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    $scenarioDesc.innerText = 'Presence detection and motion tracking from WiFi signal disturbances.';
+});
+document.getElementById('mode-breath').addEventListener('click', function() {
+    document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    $scenarioDesc.innerText = 'Contactless respiration and heart rate monitoring via CSI phase analysis.';
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (e.key === 's' || e.key === 'S') settingsDrawer.classList.toggle('open');
+    if (e.key === 'l' || e.key === 'L') btnLogToggle.click();
+    if (e.key === 'm' || e.key === 'M') btnMute.click();
+    if (e.key === ' ') { e.preventDefault(); btnSim.click(); }
+});
+
+// ═══════════════════════════════════════════════════
+// CLIENT SIMULATION
+// ═══════════════════════════════════════════════════
+function getSimCSI() {
+    const t = performance.now() / 1000;
+    const amp = [], ph = [];
+    for (let i = 0; i < 56; i++) {
+        const base = 50 + 5 * Math.sin(2*Math.PI*i/56);
+        const breath = 3 * Math.sin(2*Math.PI*0.25*t + i*0.1);
+        const hr = 0.8 * Math.sin(2*Math.PI*1.2*t + i*0.05);
+        amp.push(Math.abs(base + breath + hr + (Math.random()-0.5)*3));
+        ph.push(Math.random()*2*Math.PI - Math.PI);
+    }
+    return { breathing_bpm: 15 + (Math.random()-0.5)*2, heart_rate_bpm: 72 + (Math.random()-0.5)*4, motion_power: 5+Math.random()*2 };
+}
+
+// ═══════════════════════════════════════════════════
+// LOGGING
+// ═══════════════════════════════════════════════════
+function addLog(type, text) {
+    const ts = new Date().toLocaleTimeString('en-US', {hour12:false});
+    const div = document.createElement('div');
+    div.className = 'log-entry' + (type==='motion' ? ' alert' : '');
+    div.innerText = `[${ts}] ${text}`;
+    $logScroll.prepend(div);
+    logEntries.push({ time: ts, text });
+    if ($logScroll.children.length > 50) $logScroll.removeChild($logScroll.lastChild);
+}
+
+// ═══════════════════════════════════════════════════
+// MAIN POLL
+// ═══════════════════════════════════════════════════
+let lastBreathLog = 0;
 async function poll() {
-    // ── RSSI ──
+    // RSSI
     try {
-        const res = await fetch('http://localhost:5000/rssi');
-        const d = await res.json();
+        const r = await fetch('http://localhost:5000/rssi');
+        const d = await r.json();
         fails = 0;
-        offBanner.style.display = 'none';
-        connDot.classList.remove('off');
+        $offline.style.display = 'none';
 
-        ssidTop.innerText = d.router;
-        ssidDisp.innerText = d.router;
-        setMainGauge(d.signal);
-
-        // Calibrating first 15s
-        if (isCalibrating && Date.now() - bootTime > 15000) isCalibrating = false;
-
-        // Chart
-        chartData.shift(); chartData.push(d.signal);
-        rssiChart.update();
-
+        // Signal
+        $rssi.innerText = d.signal + '%';
         rawHist.push(d.signal);
         if (rawHist.length > 10) rawHist.shift();
-        const mean = rawHist.reduce((a, b) => a + b, 0) / rawHist.length;
-        const std = Math.sqrt(rawHist.reduce((a, b) => a + (b - mean) ** 2, 0) / rawHist.length);
-        adaptMean = mean;
+        const mean = rawHist.reduce((a,b)=>a+b,0)/rawHist.length;
+        const std = Math.sqrt(rawHist.reduce((a,b)=>a+(b-mean)**2,0)/rawHist.length);
+        $var.innerText = std.toFixed(2);
+        $motion.innerText = Math.abs(d.zscore).toFixed(3);
 
-        sCurrent.innerText = `${d.signal}%`;
-        sZscore.innerText = (d.zscore > 0 ? '+' : '') + d.zscore.toFixed(2);
+        // Sparkline
+        sparkData.push(d.signal);
+        if (sparkData.length > 30) sparkData.shift();
+        drawSparkline();
 
-        // Motion
+        // Confidence = signal strength
+        const conf = d.signal;
+        $conf.innerText = conf;
+        $barConf.style.width = conf + '%';
+
+        // Calibrating
+        if (isCalibrating && Date.now() - bootTime > 12000) isCalibrating = false;
+
+        // Motion / presence
         if (d.motion) {
-            statusBadge.innerText = '⚠ MOTION DETECTED';
-            statusBadge.className = 'badge motion';
+            figurePresent = true;
+            scanPulse = 1;
+            motionFlash = 1;
+            $presence.className = 'presence-badge present';
+            $presence.innerText = 'PRESENT';
+            $persons.innerText = '1';
+            $personDots[0].classList.add('active');
+            $motion.classList.add('alert');
+            clearTimeout(presenceTimeout);
+            presenceTimeout = setTimeout(() => {
+                $presence.className = 'presence-badge absent';
+                $presence.innerText = 'ABSENT';
+                $persons.innerText = '0';
+                $personDots[0].classList.remove('active');
+                figurePresent = false;
+            }, 8000);
+
             if (d.timestamp !== lastMotionTs) {
                 lastMotionTs = d.timestamp;
                 playBeep();
-                chartBox.classList.add('flash');
-                setTimeout(() => chartBox.classList.remove('flash'), 1500);
-                addLog('motion', `MOTION  Z:${(d.zscore > 0 ? '+' : '') + d.zscore.toFixed(2)}  Signal:${d.signal}%`);
+                addLog('motion', `MOTION  Z:${(d.zscore>0?'+':'')+d.zscore.toFixed(2)}  Signal:${d.signal}%`);
             }
-        } else if (!csiAvailable) {
-            statusBadge.innerText = '● IDLE';
-            statusBadge.className = 'badge';
+        } else {
+            $motion.classList.remove('alert');
         }
     } catch (err) {
         fails++;
-        if (fails >= 3) {
-            offBanner.style.display = 'block';
-            connDot.classList.add('off');
-        }
+        if (fails >= 3) { $offline.style.display = 'block'; }
     }
 
-    // ── CSI ──
-    let csiData = null;
+    // CSI
+    let csi = null;
     if (clientSim) {
-        csiData = getSimulatedCSI();
+        csi = getSimCSI();
+        figurePresent = true;
+        $presence.className = 'presence-badge present';
+        $presence.innerText = 'PRESENT';
+        $persons.innerText = '1';
+        $personDots[0].classList.add('active');
     } else {
         try {
-            const res2 = await fetch('http://localhost:5000/csi');
-            csiData = await res2.json();
-        } catch (e) { /* CSI not available */ }
+            const r2 = await fetch('http://localhost:5000/csi');
+            csi = await r2.json();
+        } catch(e) {}
     }
 
-    if (csiData && csiData.amplitude) {
-        // Check if CSI has actual data
-        const ampVar = csiData.amplitude.reduce((s, v) => s + Math.abs(v), 0);
-        csiAvailable = ampVar > 10;
+    if (csi) {
+        const bpm = csi.breathing_bpm || 0;
+        const hr = csi.heart_rate_bpm || 0;
 
-        if (csiAvailable || clientSim) {
-            pushHeatmapColumn(csiData.amplitude);
-            sMotpwr.innerText = (csiData.motion_power || 0).toFixed(2);
-
-            const bpm = csiData.breathing_bpm || 0;
-            setMiniGauge(breathBar, breathVal, bpm, 6, 30);
-            sBpm.innerText = bpm > 0 ? bpm.toFixed(1) : '--';
-
-            const hr = csiData.heart_rate_bpm || 0;
-            setMiniGauge(hrBar, hrVal, hr, 40, 120);
-
-            // Log breathing periodically (every 10s)
-            if (bpm > 0 && Date.now() - lastBreathLog > 10000) {
-                lastBreathLog = Date.now();
-                addLog('breath', `BREATH ${bpm.toFixed(1)} BPM`);
-            }
-
-            // Update badge for vital signs
-            if (statusBadge.className !== 'badge motion' && bpm > 0) {
-                statusBadge.innerText = '🫁 VITAL SIGNS ACTIVE';
-                statusBadge.className = 'badge vital';
-            }
-
-            // HW status
-            hwMode.innerText = clientSim ? 'SIM Mode' : 'CSI Mode';
-            hwCard.lastElementChild.innerText = clientSim ? 'Client Simulation' : 'ESP32 / Server';
-            simIndicator.classList.add('active');
+        if (!isCalibrating && bpm > 0) {
+            $resp.innerText = bpm.toFixed(0);
+            $barResp.style.width = Math.min((bpm / 30) * 100, 100) + '%';
+            if (bpm >= 12 && bpm <= 20) { $barResp.style.background = 'var(--green)'; $resp.style.color = 'var(--green)'; }
+            else { $barResp.style.background = 'var(--amber)'; $resp.style.color = 'var(--amber)'; }
         }
-    } else {
-        // No CSI data → RSSI only
-        hwMode.innerText = 'RSSI Mode';
-        hwCard.lastElementChild.innerText = 'Laptop Wi-Fi';
-        if (!clientSim) simIndicator.classList.remove('active');
-        // Push zeros to heatmap to keep it alive
-        pushHeatmapColumn(new Array(56).fill(0));
+        if (!isCalibrating && hr > 0) {
+            $hr.innerText = hr.toFixed(0);
+            $barHr.style.width = Math.min((hr / 120) * 100, 100) + '%';
+        }
+
+        // Breath log
+        if (bpm > 0 && Date.now() - lastBreathLog > 10000) {
+            lastBreathLog = Date.now();
+            addLog('breath', `BREATH ${bpm.toFixed(1)} BPM`);
+        }
     }
 }
 
 setInterval(poll, 1000);
-
-// Initial heatmap render
-renderHeatmap();
 </script>
 </body>
 </html>
