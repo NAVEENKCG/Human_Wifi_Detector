@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSSI Motion Detector</title>
+    <!-- Fonts: Syne for display, DM Sans for body -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="topbar">
+        <div class="title-area">
+            <div id="connection-dot" class="dot dot-red"></div>
+            <h1>RSSI Motion Detector</h1>
+        </div>
+        <div class="controls-area">
+            <span id="router-name" class="router-name">Connecting...</span>
+            <div class="slider-container">
+                <label for="threshold-slider">Threshold Z-score: <span id="threshold-val">2.0</span></label>
+                <input type="range" id="threshold-slider" min="1.5" max="3.5" step="0.1" value="2.0">
+            </div>
+            <button id="export-btn" class="glass-btn">Export CSV</button>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <!-- Left Panel: 30% -->
+        <div class="panel left-panel glass-card">
+            <h2>Live Signal</h2>
+            <div class="gauge-container">
+                <svg viewBox="0 0 100 50" class="gauge">
+                    <path class="gauge-bg" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke-width="10" stroke-linecap="round" />
+                    <path id="gauge-fill" class="gauge-fill" d="M 10 50 A 40 40 0 0 1 90 50" fill="none" stroke-width="10" stroke-linecap="round" stroke-dasharray="125.6" stroke-dashoffset="125.6" />
+                </svg>
+                <div class="gauge-value"><span id="signal-percent">0</span>%</div>
+            </div>
+            <div class="stats">
+                <div class="stat-box">
+                    <span class="stat-label">Z-Score</span>
+                    <span id="z-score" class="stat-value">0.0</span>
+                </div>
+            </div>
+            <div id="status-badge" class="badge badge-idle">
+                IDLE
+            </div>
+        </div>
+
+        <!-- Center Panel: 50% -->
+        <div id="center-panel" class="panel center-panel glass-card">
+            <h2>RSSI History (60s)</h2>
+            <div class="chart-container">
+                <canvas id="rssiChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Right Panel: 20% -->
+        <div class="panel right-panel glass-card">
+            <h2>Event Log</h2>
+            <div id="event-log" class="log-container">
+                <!-- Log entries will go here -->
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
