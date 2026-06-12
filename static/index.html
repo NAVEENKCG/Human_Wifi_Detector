@@ -1,1333 +1,1009 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Human WiFi Detector — NAVEENKCG</title>
-    <meta name="description"
-        content="WiFi RSSI/CSI based human presence detection, vital sign monitoring, and motion sensing observatory.">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <title>HumanSense — WiFi Presence Detector</title>
+    <meta name="description" content="WiFi-based human presence detection, vital sign monitoring, and 3-node motion sensing.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@400;700;800&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg: #0a0807;
-            --panel: rgba(12, 10, 8, 0.88);
-            --panel-border: rgba(255, 200, 100, 0.08);
-            --accent: #00d4ff;
-            --accent-glow: rgba(0, 212, 255, 0.25);
+            --bg: #0a0e14;
+            --surface: #141a24;
+            --elevated: #1c2430;
+            --border: rgba(255, 255, 255, 0.06);
+            --border-hover: rgba(255, 255, 255, 0.12);
             --green: #00ff88;
-            --green-glow: rgba(0, 255, 136, 0.3);
-            --amber: #c8a050;
-            --amber-dim: #8a7040;
-            --alert: #ff4444;
-            --text: #d4c8b8;
-            --text-dim: #6a5e50;
-            --mono: 'JetBrains Mono', 'Courier New', monospace;
+            --green-bg: rgba(0, 255, 136, 0.08);
+            --green-border: rgba(0, 255, 136, 0.25);
+            --amber: #ffaa00;
+            --amber-bg: rgba(255, 170, 0, 0.08);
+            --red: #ff4444;
+            --red-bg: rgba(255, 68, 68, 0.08);
+            --cyan: #00d4ff;
+            --text: #e0dcd4;
+            --text-dim: rgba(224, 220, 212, 0.5);
+            --text-muted: rgba(224, 220, 212, 0.3);
+            --mono: 'JetBrains Mono', monospace;
             --display: 'Syne', sans-serif;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        html { scroll-behavior: smooth; }
 
         body {
             background: var(--bg);
             color: var(--text);
             font-family: var(--mono);
-            height: 100vh;
-            overflow: hidden;
-            cursor: default;
+            font-size: 14px;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
 
-        #scene3d {
+        /* ── Subtle background texture ── */
+        body::before {
+            content: '';
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
+            inset: 0;
+            background:
+                radial-gradient(ellipse at 20% 0%, rgba(0, 212, 255, 0.03) 0%, transparent 60%),
+                radial-gradient(ellipse at 80% 100%, rgba(0, 255, 136, 0.02) 0%, transparent 60%);
+            pointer-events: none;
             z-index: 0;
         }
 
-        /* Vignette + scanlines */
-        .overlay-fx {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: radial-gradient(ellipse at 50% 40%, transparent 40%, rgba(0, 0, 0, 0.6) 100%);
-            pointer-events: none;
+        .app {
+            position: relative;
             z-index: 1;
-        }
-
-        .scanlines {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: repeating-linear-gradient(0deg, transparent 0px, transparent 2px, rgba(0, 0, 0, 0.04) 2px, rgba(0, 0, 0, 0.04) 4px);
-            pointer-events: none;
-            z-index: 2;
-        }
-
-        /* All UI floats above the 3D scene */
-        .ui-layer {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 10;
-            pointer-events: none;
-        }
-
-        .ui-layer>* {
-            pointer-events: auto;
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 1.5rem 1.25rem 2rem;
         }
 
         /* ── Top bar ── */
         .topbar {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            padding: 1.5rem 2rem;
+            align-items: center;
+            margin-bottom: 2rem;
         }
 
         .brand {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .brand-name {
             font-family: var(--display);
             font-weight: 800;
-            font-size: 1.8rem;
+            font-size: 1.4rem;
             color: #fff;
-            letter-spacing: -0.03em;
-            line-height: 1;
+            letter-spacing: -0.02em;
         }
+        .brand span { color: var(--cyan); }
 
-        .brand-name span {
-            color: var(--accent);
-        }
-
-        .brand-sub {
-            font-size: 0.65rem;
-            color: var(--amber-dim);
-            letter-spacing: 0.2em;
-            text-transform: uppercase;
-            margin-top: 0.35rem;
-        }
-
-        .top-controls {
+        .top-actions {
             display: flex;
+            gap: 0.5rem;
             align-items: center;
-            gap: 0.75rem;
         }
 
-        .pill {
-            padding: 0.3rem 0.8rem;
+        .chip {
+            padding: 0.3rem 0.75rem;
             border-radius: 100px;
-            font-size: 0.7rem;
             font-family: var(--mono);
+            font-size: 0.65rem;
             font-weight: 700;
             letter-spacing: 0.05em;
             cursor: pointer;
-            transition: all 0.3s;
-            border: 1px solid;
+            border: 1px solid var(--border);
+            background: var(--surface);
+            color: var(--text-dim);
+            transition: all 0.2s;
         }
-
-        .pill-demo {
-            background: rgba(0, 255, 136, 0.15);
-            border-color: rgba(0, 255, 136, 0.4);
+        .chip:hover { border-color: var(--border-hover); color: var(--text); }
+        .chip:active { transform: scale(0.96); }
+        .chip.active {
+            border-color: var(--green-border);
             color: var(--green);
+            background: var(--green-bg);
         }
+        .chip.active::before { content: '● '; }
 
-        .pill-demo::before {
-            content: '● ';
-        }
-
-        .pill-mode {
-            background: var(--panel);
-            border-color: var(--panel-border);
-            color: var(--amber);
-        }
-
-        .pill:hover {
-            transform: scale(1.04);
-        }
-
-        .pill:active {
-            transform: scale(0.96);
-        }
-
-        .gear-btn {
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: var(--panel);
-            border: 1px solid var(--panel-border);
+        .icon-btn {
+            width: 34px; height: 34px;
+            border-radius: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
             color: var(--text-dim);
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
             font-size: 1rem;
-            transition: all 0.3s;
+            transition: all 0.2s;
+        }
+        .icon-btn:hover { border-color: var(--border-hover); color: var(--text); }
+
+        /* ── Detection Hero ── */
+        .hero {
+            text-align: center;
+            padding: 2rem 0 1.5rem;
         }
 
-        .gear-btn:hover {
-            border-color: var(--amber);
-            color: var(--amber);
+        .detection-zone {
+            position: relative;
+            width: 200px;
+            height: 200px;
+            margin: 0 auto 1.5rem;
         }
 
-        /* Top-right description text */
-        .top-desc {
+        /* Animated pulse rings */
+        .pulse-ring {
             position: absolute;
-            top: 1.5rem;
-            right: 2rem;
-            text-align: right;
+            inset: 0;
+            border-radius: 50%;
+            border: 2px solid var(--green);
+            opacity: 0;
+            animation: none;
+        }
+        .detecting .pulse-ring {
+            animation: ring-pulse 2.5s ease-out infinite;
+        }
+        .pulse-ring:nth-child(2) { animation-delay: 0.6s; }
+        .pulse-ring:nth-child(3) { animation-delay: 1.2s; }
+
+        @keyframes ring-pulse {
+            0% { transform: scale(0.6); opacity: 0.5; }
+            100% { transform: scale(1.6); opacity: 0; }
         }
 
-        .top-desc .scenario-label {
+        /* Person icon */
+        .person-icon {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80px; height: 120px;
+        }
+        .person-icon svg {
+            width: 100%; height: 100%;
+            transition: all 0.4s;
+        }
+        .person-icon .body-fill {
+            fill: var(--text-muted);
+            transition: fill 0.4s;
+        }
+        .detecting .person-icon .body-fill {
+            fill: var(--green);
+            filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.4));
+        }
+
+        /* Status background glow */
+        .detection-zone::after {
+            content: '';
+            position: absolute;
+            inset: -20px;
+            border-radius: 50%;
+            background: radial-gradient(circle, rgba(0,255,136,0.06) 0%, transparent 70%);
+            opacity: 0;
+            transition: opacity 0.4s;
+        }
+        .detecting .detection-zone::after { opacity: 1; }
+
+        .status-text {
+            font-family: var(--display);
+            font-weight: 800;
+            font-size: 1.8rem;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.3rem;
+            transition: color 0.3s;
+        }
+        .status-text.present { color: var(--green); }
+        .status-text.absent { color: var(--text-muted); }
+
+        .status-sub {
             font-size: 0.75rem;
             color: var(--text-dim);
-            font-style: italic;
-            max-width: 260px;
-            line-height: 1.5;
+        }
+        .status-sub .source-tag {
+            display: inline-block;
+            padding: 0.15rem 0.5rem;
+            border-radius: 4px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            font-size: 0.65rem;
+            margin-left: 0.3rem;
         }
 
-        /* ── Glass panel base ── */
-        .glass {
-            background: var(--panel);
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid var(--panel-border);
-            border-radius: 12px;
-            box-shadow: inset 0 1px 0 rgba(255, 200, 100, 0.06), 0 8px 32px rgba(0, 0, 0, 0.5);
+        /* ── Confidence bar ── */
+        .conf-section {
+            margin-bottom: 1.75rem;
         }
-
-        /* ── Left panel: Vital Signs ── */
-        .panel-vitals {
-            position: absolute;
-            bottom: 6rem;
-            left: 2rem;
-            width: 180px;
-            padding: 1.25rem;
-        }
-
-        .panel-header {
+        .conf-header {
+            display: flex;
+            justify-content: space-between;
             font-size: 0.7rem;
             color: var(--text-dim);
             text-transform: uppercase;
-            letter-spacing: 0.15em;
-            margin-bottom: 1rem;
-        }
-
-        .vital-row {
-            margin-bottom: 1.1rem;
-            padding-bottom: 1.1rem;
-            border-bottom: 1px solid rgba(255, 200, 100, 0.06);
-        }
-
-        .vital-row:last-child {
-            border-bottom: none;
-            margin-bottom: 0;
-            padding-bottom: 0;
-        }
-
-        .vital-icon {
-            font-size: 0.75rem;
-            margin-right: 6px;
-        }
-
-        .vital-label {
-            font-size: 0.6rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
             letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
+        }
+        .conf-val { color: var(--cyan); font-weight: 700; }
+        .conf-track {
+            height: 8px;
+            background: var(--surface);
+            border-radius: 100px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+        .conf-fill {
+            height: 100%;
+            border-radius: 100px;
+            background: linear-gradient(90deg, var(--cyan), var(--green));
+            transition: width 0.5s ease;
+            box-shadow: 0 0 12px rgba(0, 255, 136, 0.3);
         }
 
-        .vital-value {
+        /* ── Node cards ── */
+        .nodes {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .node-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem;
+            transition: all 0.2s;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .node-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
+
+        .node-header {
             display: flex;
-            align-items: baseline;
-            gap: 6px;
-            margin-top: 0.3rem;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.75rem;
         }
-
-        .vital-num {
-            font-size: 1.6rem;
+        .node-name {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+        }
+        .node-status {
+            font-size: 0.6rem;
+            padding: 0.15rem 0.45rem;
+            border-radius: 100px;
             font-weight: 700;
-            color: var(--accent);
+        }
+        .node-status.online {
+            background: var(--green-bg);
+            color: var(--green);
+            border: 1px solid var(--green-border);
+        }
+        .node-status.offline {
+            background: var(--red-bg);
+            color: var(--red);
+            border: 1px solid rgba(255,68,68,0.25);
+        }
+        .node-signal {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #fff;
             font-family: var(--display);
             line-height: 1;
         }
-
-        .vital-num.amber {
-            color: var(--amber);
-        }
-
-        .vital-num.green {
-            color: var(--green);
-        }
-
-        .vital-unit {
-            font-size: 0.7rem;
+        .node-signal .unit {
+            font-size: 0.85rem;
             color: var(--text-dim);
+            font-weight: 400;
         }
-
-        .vital-bar {
-            height: 3px;
-            background: rgba(255, 255, 255, 0.06);
+        .node-zscore {
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-top: 0.3rem;
+        }
+        .node-zscore .val { color: var(--cyan); font-weight: 700; }
+        .node-mini-bar {
+            height: 4px;
+            background: rgba(255,255,255,0.04);
             border-radius: 2px;
-            margin-top: 0.5rem;
+            margin-top: 0.6rem;
             overflow: hidden;
         }
-
-        .vital-bar-fill {
+        .node-mini-fill {
             height: 100%;
             border-radius: 2px;
-            transition: width 0.5s ease, background 0.5s;
+            transition: width 0.5s, background 0.3s;
         }
 
-        /* ── Right panel: WiFi Signal ── */
-        .panel-signal {
-            position: absolute;
-            bottom: 6rem;
-            right: 2rem;
-            width: 200px;
-            padding: 1.25rem;
+        /* ── Metrics grid ── */
+        .metrics {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.6rem;
+            margin-bottom: 1.5rem;
         }
 
-        .sig-row {
+        .metric {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 0.75rem;
+            text-align: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .metric-label {
+            font-size: 0.55rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            margin-bottom: 0.3rem;
+        }
+        .metric-value {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: var(--cyan);
+        }
+
+        /* ── Sparkline chart ── */
+        .chart-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .chart-header {
             display: flex;
             justify-content: space-between;
-            align-items: center;
             margin-bottom: 0.5rem;
-            font-size: 0.75rem;
         }
-
-        .sig-label {
+        .chart-title {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
             color: var(--text-dim);
         }
-
-        .sig-val {
-            color: var(--accent);
-            font-weight: 700;
-        }
-
-        .sig-val.alert {
-            color: var(--alert);
-        }
-
-        .person-dots {
+        .chart-legend {
             display: flex;
-            gap: 3px;
-            align-items: center;
-        }
-
-        .pdot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            transition: background 0.3s;
-        }
-
-        .pdot.active {
-            background: var(--green);
-            box-shadow: 0 0 4px var(--green);
-        }
-
-        .sparkline-wrap {
-            height: 40px;
-            margin: 0.75rem 0;
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 6px;
-            overflow: hidden;
-            padding: 4px;
-        }
-
-        #sparkline {
-            width: 100%;
-            height: 100%;
-        }
-
-        .presence-section {
-            text-align: center;
-            margin-top: 0.75rem;
-            padding-top: 0.75rem;
-            border-top: 1px solid rgba(255, 200, 100, 0.06);
-        }
-
-        .presence-label {
+            gap: 0.75rem;
             font-size: 0.6rem;
             color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            margin-bottom: 0.5rem;
         }
-
-        .presence-badge {
+        .legend-dot {
             display: inline-block;
-            padding: 0.4rem 1.2rem;
-            border-radius: 100px;
-            font-size: 0.75rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            transition: all 0.3s;
-        }
-
-        .presence-badge.present {
-            background: rgba(0, 255, 136, 0.12);
-            border: 1px solid rgba(0, 255, 136, 0.3);
-            color: var(--green);
-        }
-
-        .presence-badge.absent {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            color: var(--text-dim);
-        }
-
-        /* ── Bottom bar ── */
-        .bottombar {
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 2rem;
-            padding: 1rem 2rem;
-        }
-
-        .mode-pills {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .mode-pill {
-            padding: 0.35rem 1rem;
-            border-radius: 100px;
-            font-size: 0.7rem;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-            cursor: pointer;
-            background: transparent;
-            border: 1px solid var(--panel-border);
-            color: var(--text-dim);
-            font-family: var(--mono);
-            transition: all 0.3s;
-        }
-
-        .mode-pill.active {
-            border-color: var(--green);
-            color: var(--green);
-            background: rgba(0, 255, 136, 0.08);
-        }
-
-        .mode-pill:hover {
-            border-color: var(--amber);
-            color: var(--amber);
-        }
-
-        .mode-pill:active {
-            transform: scale(0.96);
-        }
-
-        .kb-hints {
-            display: flex;
-            gap: 1rem;
-            font-size: 0.65rem;
-            color: var(--text-dim);
-        }
-
-        .kb-hint kbd {
-            background: rgba(255, 255, 255, 0.06);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 3px;
-            padding: 1px 5px;
-            font-family: var(--mono);
+            width: 6px; height: 6px;
+            border-radius: 50%;
             margin-right: 3px;
+            vertical-align: middle;
         }
-
-        /* ── Settings drawer ── */
-        .settings-drawer {
-            position: absolute;
-            top: 4rem;
-            right: 2rem;
-            width: 240px;
-            padding: 1.25rem;
-            display: none;
-            z-index: 20;
-        }
-
-        .settings-drawer.open {
+        #sparkline {
+            width: 100%;
+            height: 80px;
             display: block;
         }
 
-        .setting-row {
-            margin-bottom: 1rem;
+        /* ── Event log ── */
+        .log-section {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
         }
-
-        .setting-label {
-            font-size: 0.65rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.4rem;
-        }
-
-        .setting-row input[type=range] {
-            width: 100%;
-            accent-color: var(--accent);
-            cursor: pointer;
-        }
-
-        .setting-val {
-            font-size: 0.8rem;
-            color: var(--accent);
-            float: right;
-        }
-
-        .toggle-row {
+        .log-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
+            margin-bottom: 0.6rem;
+        }
+        .log-scroll {
+            max-height: 150px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .log-entry {
+            font-size: 0.7rem;
+            padding: 0.3rem 0.5rem;
+            border-radius: 6px;
+            background: rgba(255,255,255,0.02);
+            color: var(--text-dim);
+            border-left: 3px solid transparent;
+        }
+        .log-entry.motion {
+            border-left-color: var(--red);
+            color: var(--red);
+            background: var(--red-bg);
+        }
+        .log-entry.info {
+            border-left-color: var(--green);
+            color: var(--green);
+            background: var(--green-bg);
+        }
+        .log-empty {
+            text-align: center;
+            padding: 1rem;
+            color: var(--text-muted);
             font-size: 0.75rem;
         }
 
-        .toggle-btn {
-            background: transparent;
-            border: 1px solid var(--panel-border);
-            color: var(--text-dim);
-            padding: 0.25rem 0.6rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-family: var(--mono);
-            font-size: 0.7rem;
-            transition: all 0.3s;
+        .log-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.6rem;
         }
+        .log-actions .chip { flex: 1; text-align: center; font-size: 0.6rem; }
 
-        .toggle-btn.on {
-            border-color: var(--green);
+        /* ── Settings panel ── */
+        .settings-panel {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            display: none;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+        }
+        .settings-panel.open { display: block; }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .setting-row:last-child { border-bottom: none; }
+        .setting-label { font-size: 0.75rem; color: var(--text-dim); }
+        .setting-value { font-size: 0.75rem; color: var(--cyan); font-weight: 700; }
+
+        .setting-row input[type=range] {
+            width: 120px;
+            accent-color: var(--cyan);
+        }
+        .toggle-pill {
+            padding: 0.2rem 0.6rem;
+            border-radius: 100px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            background: var(--bg);
+            color: var(--text-dim);
+            font-family: var(--mono);
+            transition: all 0.2s;
+        }
+        .toggle-pill.on {
+            border-color: var(--green-border);
             color: var(--green);
+            background: var(--green-bg);
         }
 
         /* ── Offline banner ── */
         .offline-banner {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            padding: 1rem 2rem;
-            border-radius: 8px;
-            background: rgba(255, 68, 68, 0.15);
-            border: 1px solid rgba(255, 68, 68, 0.3);
-            color: var(--alert);
-            font-size: 0.85rem;
-            font-weight: 700;
-            letter-spacing: 0.1em;
-            display: none;
-            z-index: 30;
-        }
-
-        /* ── Event log overlay (toggled) ── */
-        .log-drawer {
-            position: absolute;
-            bottom: 6rem;
-            left: 50%;
+            position: fixed;
+            top: 1rem; left: 50%;
             transform: translateX(-50%);
-            width: 400px;
-            max-height: 250px;
-            padding: 1rem;
+            padding: 0.6rem 1.5rem;
+            border-radius: 12px;
+            background: var(--red-bg);
+            border: 1px solid rgba(255,68,68,0.3);
+            color: var(--red);
+            font-size: 0.8rem;
+            font-weight: 700;
+            z-index: 100;
             display: none;
-            flex-direction: column;
+            backdrop-filter: blur(12px);
         }
 
-        .log-drawer.open {
-            display: flex;
+        /* ── Motion flash border ── */
+        .motion-flash {
+            position: fixed;
+            inset: 0;
+            border: 3px solid var(--green);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s;
+            z-index: 50;
+            border-radius: 0;
         }
+        .motion-flash.active { opacity: 1; }
+        .motion-flash.amber { border-color: var(--amber); }
 
-        .log-scroll {
-            flex: 1;
-            overflow-y: auto;
-            font-size: 0.7rem;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-            margin-bottom: 0.75rem;
-        }
-
-        .log-entry {
-            padding: 3px 6px;
-            border-left: 2px solid var(--green);
-            color: var(--green);
-        }
-
-        .log-entry.alert {
-            border-color: var(--alert);
-            color: var(--alert);
-        }
-
-        .log-btns {
-            display: flex;
-            gap: 0.5rem;
-        }
-
-        .log-btns .pill {
-            flex: 1;
+        /* ── Footer ── */
+        .footer {
             text-align: center;
+            font-size: 0.6rem;
+            color: var(--text-muted);
+            padding: 0.5rem 0 1rem;
+        }
+        .footer kbd {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            padding: 1px 5px;
+            border-radius: 3px;
+            font-family: var(--mono);
+            margin: 0 2px;
         }
 
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 4px;
-        }
+        /* ── Scrollbar ── */
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
 
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 200, 100, 0.15);
-            border-radius: 2px;
-        }
-
-        @media (max-width: 768px) {
-
-            .panel-vitals,
-            .panel-signal {
-                position: static;
-                width: 100%;
-            }
-
-            .ui-layer {
-                overflow-y: auto;
-            }
-
-            .bottombar {
-                flex-direction: column;
-                gap: 0.5rem;
-            }
-
-            .kb-hints {
-                display: none;
-            }
-
-            .top-desc {
-                display: none;
-            }
+        /* ── Responsive ── */
+        @media (max-width: 500px) {
+            .metrics { grid-template-columns: repeat(2, 1fr); }
+            .detection-zone { width: 160px; height: 160px; }
+            .status-text { font-size: 1.4rem; }
+            .node-signal { font-size: 1.6rem; }
         }
     </style>
 </head>
-
 <body>
-    <canvas id="scene3d"></canvas>
-    <div class="overlay-fx"></div>
-    <div class="scanlines"></div>
 
-    <div class="ui-layer">
-        <!-- Offline -->
-        <div id="offline-banner" class="offline-banner">⚠ SERVER OFFLINE — RECONNECTING…</div>
+<div class="offline-banner" id="offline">⚠ SERVER OFFLINE — RECONNECTING…</div>
+<div class="motion-flash" id="flash"></div>
 
-        <!-- Top bar -->
-        <header class="topbar">
-            <div class="brand">
-                <div class="brand-name"><span>π</span> HumanSense</div>
-                <div class="brand-sub">WiFi Sensing Observatory</div>
-            </div>
-            <div class="top-controls">
-                <div id="pill-demo" class="pill pill-demo">SIM</div>
-                <div id="pill-mode" class="pill pill-mode">Motion</div>
-                <div id="gear-btn" class="gear-btn" aria-label="Settings">⚙</div>
-            </div>
-        </header>
+<main class="app">
 
-        <div class="top-desc">
-            <div id="scenario-desc" class="scenario-label">Presence detection and vital sign monitoring from WiFi signal
-                disturbances.</div>
+    <!-- Top bar -->
+    <nav class="topbar">
+        <div class="brand"><span>π</span> HumanSense</div>
+        <div class="top-actions">
+            <button class="chip" id="btn-sim">SIM</button>
+            <button class="icon-btn" id="btn-mute" aria-label="Toggle audio">🔔</button>
+            <button class="icon-btn" id="btn-settings" aria-label="Settings">⚙</button>
         </div>
+    </nav>
 
-        <!-- Settings drawer -->
-        <div id="settings-drawer" class="glass settings-drawer">
-            <div class="panel-header">Settings</div>
-            <div class="setting-row">
-                <div class="setting-label">Z-Score Threshold <span id="thresh-val" class="setting-val">2.0σ</span></div>
-                <input type="range" id="thresh-slider" min="1.0" max="4.0" step="0.1" value="2.0">
-            </div>
-            <div class="setting-row">
-                <div class="toggle-row">
-                    <span>Audio Alert</span>
-                    <button id="btn-mute" class="toggle-btn on">🔔 ON</button>
-                </div>
-            </div>
-            <div class="setting-row">
-                <div class="toggle-row">
-                    <span>Simulation</span>
-                    <button id="btn-sim" class="toggle-btn">OFF</button>
-                </div>
-            </div>
-            <div class="setting-row">
-                <div class="toggle-row">
-                    <span>Event Log</span>
-                    <button id="btn-log-toggle" class="toggle-btn">SHOW</button>
-                </div>
-            </div>
+    <!-- Settings -->
+    <section class="settings-panel" id="settings-panel">
+        <div class="setting-row">
+            <span class="setting-label">Z-Score Threshold</span>
+            <span><span class="setting-value" id="thresh-display">2.0σ</span>
+            <input type="range" id="thresh-slider" min="1.0" max="4.0" step="0.1" value="2.0"></span>
         </div>
+        <div class="setting-row">
+            <span class="setting-label">Audio Alert</span>
+            <button class="toggle-pill on" id="toggle-audio">ON</button>
+        </div>
+        <div class="setting-row">
+            <span class="setting-label">Simulation Mode</span>
+            <button class="toggle-pill" id="toggle-sim">OFF</button>
+        </div>
+    </section>
 
-        <!-- Left panel: Vitals -->
-        <section class="glass panel-vitals">
-            <div class="panel-header">Vital Signs</div>
-            <div class="vital-row">
-                <div><span class="vital-icon">❤️</span><span class="vital-label">Heart Rate</span></div>
-                <div class="vital-value">
-                    <span id="v-hr" class="vital-num amber">--</span>
-                    <span class="vital-unit">BPM</span>
-                </div>
-                <div class="vital-bar">
-                    <div id="bar-hr" class="vital-bar-fill" style="width:0%; background: var(--amber)"></div>
-                </div>
-            </div>
-            <div class="vital-row">
-                <div><span class="vital-icon">🫁</span><span class="vital-label">Respiration</span></div>
-                <div class="vital-value">
-                    <span id="v-resp" class="vital-num green">--</span>
-                    <span class="vital-unit">RPM</span>
-                </div>
-                <div class="vital-bar">
-                    <div id="bar-resp" class="vital-bar-fill" style="width:0%; background: var(--green)"></div>
-                </div>
-            </div>
-            <div class="vital-row">
-                <div><span class="vital-icon">📡</span><span class="vital-label">Confidence</span></div>
-                <div class="vital-value">
-                    <span id="v-conf" class="vital-num accent" style="color:var(--accent)">--</span>
-                    <span class="vital-unit">%</span>
-                </div>
-                <div class="vital-bar">
-                    <div id="bar-conf" class="vital-bar-fill" style="width:0%; background: var(--accent)"></div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Right panel: WiFi Signal -->
-        <section class="glass panel-signal">
-            <div class="panel-header">WiFi Signal</div>
-            <div class="sig-row"><span class="sig-label">RSSI</span><span id="s-rssi" class="sig-val">0%</span></div>
-            <div class="sig-row"><span class="sig-label">Variance</span><span id="s-var" class="sig-val">0.00</span>
-            </div>
-            <div class="sig-row"><span class="sig-label">Motion</span><span id="s-motion" class="sig-val">0.00</span>
-            </div>
-            <div class="sig-row">
-                <span class="sig-label">Persons</span>
-                <span class="sig-val">
-                    <span id="s-persons">0</span>
-                    <span class="person-dots" id="person-dots">
-                        <span class="pdot"></span><span class="pdot"></span><span class="pdot"></span>
-                        <span class="pdot"></span><span class="pdot"></span><span class="pdot"></span>
-                        <span class="pdot"></span><span class="pdot"></span>
-                    </span>
-                </span>
-            </div>
-            <div class="sparkline-wrap"><canvas id="sparkline"></canvas></div>
-            <div class="presence-section">
-                <div class="presence-label">Presence</div>
-                <div id="presence-badge" class="presence-badge absent">ABSENT</div>
-            </div>
-        </section>
-
-        <!-- Event log drawer -->
-        <div id="log-drawer" class="glass log-drawer">
-            <div class="panel-header">Event Log</div>
-            <div id="log-scroll" class="log-scroll"></div>
-            <div class="log-btns">
-                <button id="btn-clear" class="pill pill-mode">CLEAR</button>
-                <button id="btn-export" class="pill pill-mode">EXPORT CSV</button>
+    <!-- Detection hero -->
+    <section class="hero" id="hero">
+        <div class="detection-zone" id="detection-zone">
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+            <div class="pulse-ring"></div>
+            <div class="person-icon">
+                <svg viewBox="0 0 80 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Head -->
+                    <circle class="body-fill" cx="40" cy="18" r="14" />
+                    <!-- Body -->
+                    <path class="body-fill" d="M24 40 C24 36 32 32 40 32 C48 32 56 36 56 40 L56 72 C56 76 52 80 48 80 L32 80 C28 80 24 76 24 72 Z"/>
+                    <!-- Left arm -->
+                    <path class="body-fill" d="M24 42 L10 62 C8 65 10 68 13 67 L24 56 Z"/>
+                    <!-- Right arm -->
+                    <path class="body-fill" d="M56 42 L70 62 C72 65 70 68 67 67 L56 56 Z"/>
+                    <!-- Left leg -->
+                    <path class="body-fill" d="M28 78 L24 112 C23 116 28 117 30 114 L36 80 Z"/>
+                    <!-- Right leg -->
+                    <path class="body-fill" d="M52 78 L56 112 C57 116 52 117 50 114 L44 80 Z"/>
+                </svg>
             </div>
         </div>
+        <div class="status-text absent" id="status-text">NO PRESENCE</div>
+        <div class="status-sub" id="status-sub">Monitoring WiFi signal…<span class="source-tag" id="source-tag">—</span></div>
+    </section>
 
-        <!-- Bottom bar -->
-        <footer class="bottombar">
-            <div class="mode-pills">
-                <button id="mode-motion" class="mode-pill active">MOTION</button>
-                <button id="mode-breath" class="mode-pill">VITAL</button>
+    <!-- Confidence bar -->
+    <section class="conf-section">
+        <div class="conf-header">
+            <span>Detection Confidence</span>
+            <span class="conf-val" id="conf-val">0%</span>
+        </div>
+        <div class="conf-track">
+            <div class="conf-fill" id="conf-fill" style="width: 0%"></div>
+        </div>
+    </section>
+
+    <!-- Node cards -->
+    <section class="nodes">
+        <div class="node-card" id="node-laptop">
+            <div class="node-header">
+                <span class="node-name">💻 Laptop</span>
+                <span class="node-status online" id="laptop-status">ONLINE</span>
             </div>
-            <div class="kb-hints">
-                <span class="kb-hint"><kbd>S</kbd> Settings</span>
-                <span class="kb-hint"><kbd>L</kbd> Log</span>
-                <span class="kb-hint"><kbd>M</kbd> Mute</span>
-                <span class="kb-hint"><kbd>Space</kbd> Sim</span>
+            <div class="node-signal"><span id="laptop-signal">--</span><span class="unit">%</span></div>
+            <div class="node-zscore">Z-Score: <span class="val" id="laptop-zscore">0.00</span></div>
+            <div class="node-mini-bar"><div class="node-mini-fill" id="laptop-bar" style="width:0%; background: var(--cyan)"></div></div>
+        </div>
+        <div class="node-card" id="node-phone">
+            <div class="node-header">
+                <span class="node-name">📱 Phone</span>
+                <span class="node-status offline" id="phone-status">OFFLINE</span>
             </div>
-        </footer>
-    </div>
+            <div class="node-signal"><span id="phone-signal">--</span><span class="unit">%</span></div>
+            <div class="node-zscore">Z-Score: <span class="val" id="phone-zscore">0.00</span></div>
+            <div class="node-mini-bar"><div class="node-mini-fill" id="phone-bar" style="width:0%; background: var(--amber)"></div></div>
+        </div>
+    </section>
 
-    <script>
-        // ═══════════════════════════════════════════════════
-        // THREE.JS SCENE
-        // ═══════════════════════════════════════════════════
-        const canvas = document.getElementById('scene3d');
-        const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x0a0807, 0.06);
+    <!-- Metrics -->
+    <section class="metrics">
+        <div class="metric">
+            <div class="metric-label">RSSI</div>
+            <div class="metric-value" id="m-rssi">--%</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Variance</div>
+            <div class="metric-value" id="m-var">0.00</div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Heart Rate</div>
+            <div class="metric-value" id="m-hr">-- <small style="font-size:0.6rem;color:var(--text-dim)">BPM</small></div>
+        </div>
+        <div class="metric">
+            <div class="metric-label">Breathing</div>
+            <div class="metric-value" id="m-breath">-- <small style="font-size:0.6rem;color:var(--text-dim)">RPM</small></div>
+        </div>
+    </section>
 
-        const camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 100);
-        camera.position.set(0, 1.6, 5.0);
-        camera.lookAt(0, 0.8, 0);
+    <!-- Signal chart -->
+    <section class="chart-section">
+        <div class="chart-header">
+            <span class="chart-title">Signal History (60s)</span>
+            <div class="chart-legend">
+                <span><span class="legend-dot" style="background:var(--cyan)"></span>Laptop</span>
+                <span><span class="legend-dot" style="background:var(--amber)"></span>Phone</span>
+            </div>
+        </div>
+        <canvas id="sparkline"></canvas>
+    </section>
 
-        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setClearColor(0x0a0807);
+    <!-- Event log -->
+    <section class="log-section">
+        <div class="log-header">
+            <span class="chart-title">Event Log</span>
+            <span class="chart-title" id="event-count">0 events</span>
+        </div>
+        <div class="log-scroll" id="log-scroll">
+            <div class="log-empty">No events yet — waiting for motion…</div>
+        </div>
+        <div class="log-actions">
+            <button class="chip" id="btn-clear">CLEAR</button>
+            <button class="chip" id="btn-export">EXPORT CSV</button>
+        </div>
+    </section>
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+    <!-- Footer -->
+    <footer class="footer">
+        <kbd>S</kbd> Settings &nbsp; <kbd>M</kbd> Mute &nbsp; <kbd>Space</kbd> Sim &nbsp; <kbd>L</kbd> Log
+    </footer>
 
-        // Lights
-        scene.add(new THREE.AmbientLight(0x1a1510, 0.4));
-        const pointLight = new THREE.PointLight(0x00d4ff, 0.6, 20);
-        pointLight.position.set(2, 5, 3);
-        scene.add(pointLight);
-        const groundLight = new THREE.PointLight(0x00ff88, 0.3, 8);
-        groundLight.position.set(0, 0.1, 0);
-        scene.add(groundLight);
+</main>
 
-        // ── Wireframe Spheres (large, prominent like RuView) ──
-        const wireMat = new THREE.MeshBasicMaterial({ color: 0x2244aa, wireframe: true, transparent: true, opacity: 0.3 });
-        const sphere1 = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 3), wireMat);
-        sphere1.position.set(-2, 4, -5);
-        scene.add(sphere1);
-        const wireMat2 = new THREE.MeshBasicMaterial({ color: 0x1a3a8c, wireframe: true, transparent: true, opacity: 0.2 });
-        const sphere2 = new THREE.Mesh(new THREE.IcosahedronGeometry(3.5, 2), wireMat2);
-        sphere2.position.set(3, 3, -4);
-        scene.add(sphere2);
+<script>
+// ═══════════════════════════════════════════════════
+// AUDIO
+// ═══════════════════════════════════════════════════
+let audioCtx;
+let beepOn = localStorage.getItem('beep') !== 'false';
 
-        // ── Grid floor ──
-        const grid = new THREE.GridHelper(20, 40, 0x1a2a1a, 0x0a150a);
-        grid.position.y = 0;
-        scene.add(grid);
+function playBeep(freq = 440) {
+    if (!beepOn) return;
+    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine';
+    o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    g.gain.setValueAtTime(0.06, audioCtx.currentTime);
+    o.connect(g);
+    g.connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + 0.12);
+}
 
-        // ── Ground dots (dense scattered grid like RuView) ──
-        const dotGroup = new THREE.Group();
-        for (let x = -6; x <= 6; x += 0.4) {
-            for (let z = -6; z <= 6; z += 0.4) {
-                if (Math.random() > 0.35) continue;
-                const isLit = Math.random() > 0.5;
-                const dot = new THREE.Mesh(
-                    new THREE.BoxGeometry(0.12, 0.015, 0.12),
-                    new THREE.MeshBasicMaterial({
-                        color: isLit ? 0x00ff88 : 0x1a3a2a,
-                        transparent: true,
-                        opacity: isLit ? (0.3 + Math.random() * 0.6) : (0.15 + Math.random() * 0.2)
-                    })
-                );
-                dot.position.set(x + (Math.random() - 0.5) * 0.2, 0.008, z + (Math.random() - 0.5) * 0.2);
-                dotGroup.add(dot);
-            }
+// ═══════════════════════════════════════════════════
+// DOM REFS
+// ═══════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+
+const dom = {
+    offline:       $('offline'),
+    flash:         $('flash'),
+    hero:          $('hero'),
+    zone:          $('detection-zone'),
+    statusText:    $('status-text'),
+    statusSub:     $('status-sub'),
+    sourceTag:     $('source-tag'),
+    confVal:       $('conf-val'),
+    confFill:      $('conf-fill'),
+    laptopSignal:  $('laptop-signal'),
+    laptopZscore:  $('laptop-zscore'),
+    laptopBar:     $('laptop-bar'),
+    laptopStatus:  $('laptop-status'),
+    phoneSignal:   $('phone-signal'),
+    phoneZscore:   $('phone-zscore'),
+    phoneBar:      $('phone-bar'),
+    phoneStatus:   $('phone-status'),
+    mRssi:         $('m-rssi'),
+    mVar:          $('m-var'),
+    mHr:           $('m-hr'),
+    mBreath:       $('m-breath'),
+    logScroll:     $('log-scroll'),
+    eventCount:    $('event-count'),
+    threshDisplay: $('thresh-display'),
+    threshSlider:  $('thresh-slider'),
+    settingsPanel: $('settings-panel'),
+    btnMute:       $('btn-mute'),
+    btnSim:        $('btn-sim'),
+    btnSettings:   $('btn-settings'),
+    toggleAudio:   $('toggle-audio'),
+    toggleSim:     $('toggle-sim'),
+};
+
+// ═══════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════
+let fails = 0;
+let clientSim = false;
+let lastMotionTs = 0;
+let presenceTimer = null;
+let logEntries = [];
+const laptopHist = [];
+const phoneHist = [];
+let firstLog = true;
+
+// ═══════════════════════════════════════════════════
+// SPARKLINE CHART
+// ═══════════════════════════════════════════════════
+const sparkCanvas = $('sparkline');
+
+function drawChart() {
+    const ctx = sparkCanvas.getContext('2d');
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    const w = sparkCanvas.clientWidth * dpr;
+    const h = sparkCanvas.clientHeight * dpr;
+    sparkCanvas.width = w;
+    sparkCanvas.height = h;
+    ctx.clearRect(0, 0, w, h);
+
+    function drawLine(data, color) {
+        if (data.length < 2) return;
+        ctx.beginPath();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2 * dpr;
+        ctx.lineJoin = 'round';
+        for (let i = 0; i < data.length; i++) {
+            const x = (i / (data.length - 1)) * w;
+            const y = h - (data[i] / 100) * h * 0.9 - h * 0.05;
+            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
         }
-        scene.add(dotGroup);
+        ctx.stroke();
+    }
 
-        // ── Ground glow disc (larger, brighter) ──
-        const glowDisc = new THREE.Mesh(
-            new THREE.CircleGeometry(1.5, 48),
-            new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.12, side: THREE.DoubleSide })
-        );
-        glowDisc.rotation.x = -Math.PI / 2;
-        glowDisc.position.y = 0.01;
-        scene.add(glowDisc);
-        // Secondary glow ring
-        const glowDisc2 = new THREE.Mesh(
-            new THREE.CircleGeometry(0.6, 32),
-            new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
-        );
-        glowDisc2.rotation.x = -Math.PI / 2;
-        glowDisc2.position.y = 0.015;
-        scene.add(glowDisc2);
+    drawLine(laptopHist, '#00d4ff');
+    drawLine(phoneHist, '#ffaa00');
+}
 
-        // ── Scan ring (pulses on motion) ──
-        const scanRing = new THREE.Mesh(
-            new THREE.RingGeometry(0.5, 0.55, 64),
-            new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0, side: THREE.DoubleSide })
-        );
-        scanRing.rotation.x = -Math.PI / 2;
-        scanRing.position.y = 0.02;
-        scene.add(scanRing);
-        let scanPulse = 0;
+// ═══════════════════════════════════════════════════
+// LOGGING
+// ═══════════════════════════════════════════════════
+function addLog(type, text) {
+    if (firstLog) {
+        dom.logScroll.innerHTML = '';
+        firstLog = false;
+    }
+    const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const div = document.createElement('div');
+    div.className = 'log-entry ' + type;
+    div.textContent = `[${ts}] ${text}`;
+    dom.logScroll.prepend(div);
+    logEntries.push({ time: ts, text });
+    if (dom.logScroll.children.length > 50) dom.logScroll.removeChild(dom.logScroll.lastChild);
+    dom.eventCount.textContent = logEntries.length + ' events';
+}
 
-        // ── Body glow column (bright holographic fill like RuView) ──
-        // Inner bright core
-        const bodyGlowInner = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.14, 0.1, 1.6, 16),
-            new THREE.MeshBasicMaterial({ color: 0x00ffcc, transparent: true, opacity: 0.12 })
-        );
-        bodyGlowInner.position.y = 0.85;
-        scene.add(bodyGlowInner);
-        // Mid glow layer
-        const bodyGlowMid = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.22, 0.16, 1.7, 16),
-            new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.07 })
-        );
-        bodyGlowMid.position.y = 0.85;
-        scene.add(bodyGlowMid);
-        // Outer glow halo
-        const bodyGlowOuter = new THREE.Mesh(
-            new THREE.CylinderGeometry(0.35, 0.25, 1.8, 16),
-            new THREE.MeshBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.035 })
-        );
-        bodyGlowOuter.position.y = 0.85;
-        scene.add(bodyGlowOuter);
-        // Backdrop glow plane (behind figure)
-        const backdropGeo = new THREE.PlaneGeometry(1.2, 2.0);
-        const backdropMat = new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.04, side: THREE.DoubleSide });
-        const backdrop = new THREE.Mesh(backdropGeo, backdropMat);
-        backdrop.position.set(0, 0.95, -0.15);
-        scene.add(backdrop);
-        const bodyGlow = bodyGlowInner; // alias for animation reference
+// ═══════════════════════════════════════════════════
+// PRESENCE STATE MANAGEMENT
+// ═══════════════════════════════════════════════════
+function setPresent(confidence, source) {
+    dom.zone.classList.add('detecting');
+    dom.statusText.className = 'status-text present';
+    dom.statusText.textContent = 'PERSON DETECTED';
 
-        // ── Human Skeleton (17 keypoints) ──
-        const KP = [
-            [0, 1.68, 0.04],    // 0 nose
-            [-0.03, 1.72, 0.06], // 1 l_eye
-            [0.03, 1.72, 0.06],  // 2 r_eye
-            [-0.07, 1.70, 0],    // 3 l_ear
-            [0.07, 1.70, 0],     // 4 r_ear
-            [-0.2, 1.45, 0],     // 5 l_shoulder
-            [0.2, 1.45, 0],      // 6 r_shoulder
-            [-0.3, 1.15, 0.02],  // 7 l_elbow
-            [0.3, 1.15, 0.02],   // 8 r_elbow
-            [-0.3, 0.88, 0.04],  // 9 l_wrist
-            [0.3, 0.88, 0.04],   // 10 r_wrist
-            [-0.1, 0.92, 0],     // 11 l_hip
-            [0.1, 0.92, 0],      // 12 r_hip
-            [-0.12, 0.48, 0.02], // 13 l_knee
-            [0.12, 0.48, 0.02],  // 14 r_knee
-            [-0.12, 0.05, 0.04], // 15 l_ankle
-            [0.12, 0.05, 0.04],  // 16 r_ankle
-        ];
+    const sourceLabels = {
+        both: 'BOTH NODES',
+        laptop: 'LAPTOP ONLY',
+        phone: 'PHONE ONLY',
+        none: '—'
+    };
+    dom.sourceTag.textContent = sourceLabels[source] || source;
+    dom.confVal.textContent = Math.round(confidence * 100) + '%';
+    dom.confFill.style.width = (confidence * 100) + '%';
 
-        const BONES = [
-            [0, 1], [0, 2], [1, 3], [2, 4],
-            [0, 5], [0, 6], [5, 6],
-            [5, 7], [7, 9], [6, 8], [8, 10],
-            [5, 11], [6, 12], [11, 12],
-            [11, 13], [13, 15], [12, 14], [14, 16]
-        ];
+    clearTimeout(presenceTimer);
+    presenceTimer = setTimeout(setAbsent, 8000);
+}
 
-        // Keypoint spheres
-        const kpMeshes = [];
-        const kpGeo = new THREE.SphereGeometry(0.02, 8, 8);
-        const kpGlowGeo = new THREE.SphereGeometry(0.04, 8, 8);
-        const kpMat = new THREE.MeshBasicMaterial({ color: 0xff6633 });
-        const kpGlowMat = new THREE.MeshBasicMaterial({ color: 0xff6633, transparent: true, opacity: 0.2 });
+function setAbsent() {
+    dom.zone.classList.remove('detecting');
+    dom.statusText.className = 'status-text absent';
+    dom.statusText.textContent = 'NO PRESENCE';
+    dom.sourceTag.textContent = '—';
+    dom.confVal.textContent = '0%';
+    dom.confFill.style.width = '0%';
+}
 
-        KP.forEach(pos => {
-            const m = new THREE.Mesh(kpGeo, kpMat);
-            m.position.set(...pos);
-            scene.add(m);
-            const g = new THREE.Mesh(kpGlowGeo, kpGlowMat);
-            g.position.set(...pos);
-            scene.add(g);
-            kpMeshes.push({ core: m, glow: g, base: [...pos] });
-        });
+// ═══════════════════════════════════════════════════
+// CLIENT SIMULATION
+// ═══════════════════════════════════════════════════
+function getSimCSI() {
+    const t = performance.now() / 1000;
+    return {
+        breathing_bpm: 15 + (Math.random() - 0.5) * 2,
+        heart_rate_bpm: 72 + (Math.random() - 0.5) * 4,
+        motion_power: 5 + Math.random() * 2
+    };
+}
 
-        // Bone lines
-        const boneMat = new THREE.LineBasicMaterial({ color: 0x00ff88, transparent: true, opacity: 0.7 });
-        const boneLines = [];
-        BONES.forEach(([a, b]) => {
-            const geo = new THREE.BufferGeometry().setFromPoints([
-                new THREE.Vector3(...KP[a]),
-                new THREE.Vector3(...KP[b])
-            ]);
-            const line = new THREE.Line(geo, boneMat);
-            scene.add(line);
-            boneLines.push({ line, a, b });
-        });
+// ═══════════════════════════════════════════════════
+// MAIN POLL
+// ═══════════════════════════════════════════════════
+async function poll() {
+    try {
+        // Fused endpoint (includes laptop + phone data)
+        const res = await fetch('/fused');
+        const d = await res.json();
+        fails = 0;
+        dom.offline.style.display = 'none';
 
-        // ── Floating particles ──
-        const partCount = 150;
-        const partGeo = new THREE.BufferGeometry();
-        const partPos = new Float32Array(partCount * 3);
-        for (let i = 0; i < partCount; i++) {
-            partPos[i * 3] = (Math.random() - 0.5) * 12;
-            partPos[i * 3 + 1] = Math.random() * 6;
-            partPos[i * 3 + 2] = (Math.random() - 0.5) * 12;
-        }
-        partGeo.setAttribute('position', new THREE.BufferAttribute(partPos, 3));
-        const particles = new THREE.Points(partGeo, new THREE.PointsMaterial({
-            color: 0x00d4ff, size: 0.03, transparent: true, opacity: 0.4
-        }));
-        scene.add(particles);
+        // Laptop node
+        const lp = d.laptop || {};
+        dom.laptopSignal.textContent = lp.signal || 0;
+        dom.laptopZscore.textContent = (lp.zscore || 0).toFixed(2);
+        dom.laptopBar.style.width = (lp.signal || 0) + '%';
+        dom.laptopBar.style.background = (lp.signal > 50) ? 'var(--cyan)' : 'var(--amber)';
+        dom.mRssi.textContent = (lp.signal || 0) + '%';
 
-        // ── Animation state ──
-        let breathPhase = 0;
-        let figurePresent = false;
-        let motionFlash = 0;
+        laptopHist.push(lp.signal || 0);
+        if (laptopHist.length > 60) laptopHist.shift();
 
-        function animateScene(t) {
-            requestAnimationFrame(animateScene);
-            const sec = t * 0.001;
-
-            // Camera slow orbit
-            camera.position.x = Math.sin(sec * 0.05) * 0.8;
-            camera.position.z = 5.0 + Math.cos(sec * 0.05) * 0.4;
-            camera.lookAt(0, 0.8, 0);
-
-            // Wireframe rotation
-            sphere1.rotation.y += 0.001;
-            sphere1.rotation.x += 0.0005;
-            sphere2.rotation.y -= 0.0015;
-            sphere2.rotation.z += 0.0008;
-
-            // Breathing animation on skeleton
-            breathPhase += 0.03;
-            const breathScale = Math.sin(breathPhase) * 0.015;
-            kpMeshes.forEach((kp, i) => {
-                const base = kp.base;
-                let dx = 0, dy = 0;
-                // Expand torso on breath
-                if ([5, 6, 11, 12].includes(i)) dx = base[0] > 0 ? breathScale : -breathScale;
-                if ([5, 6].includes(i)) dy = breathScale * 0.5;
-                kp.core.position.set(base[0] + dx, base[1] + dy, base[2]);
-                kp.glow.position.copy(kp.core.position);
-            });
-
-            // Update bone line positions
-            boneLines.forEach(({ line, a, b }) => {
-                const posArray = line.geometry.attributes.position.array;
-                const pa = kpMeshes[a].core.position;
-                const pb = kpMeshes[b].core.position;
-                posArray[0] = pa.x; posArray[1] = pa.y; posArray[2] = pa.z;
-                posArray[3] = pb.x; posArray[4] = pb.y; posArray[5] = pb.z;
-                line.geometry.attributes.position.needsUpdate = true;
-            });
-
-            // Figure visibility
-            const vis = figurePresent ? 1 : 0.15;
-            kpMat.opacity = vis;
-            boneMat.opacity = vis * 0.7;
-            bodyGlowInner.material.opacity = vis * 0.12;
-            bodyGlowMid.material.opacity = vis * 0.07;
-            bodyGlowOuter.material.opacity = vis * 0.035;
-            backdropMat.opacity = vis * 0.04;
-
-            // Ground glow pulse
-            glowDisc.material.opacity = 0.06 + Math.sin(sec * 2) * 0.03;
-
-            // Scan ring pulse
-            if (scanPulse > 0) {
-                scanPulse -= 0.02;
-                const s = 1 + (1 - scanPulse) * 3;
-                scanRing.scale.set(s, s, 1);
-                scanRing.material.opacity = scanPulse * 0.5;
-            }
-
-            // Particle drift
-            const pArr = particles.geometry.attributes.position.array;
-            for (let i = 0; i < partCount; i++) {
-                pArr[i * 3 + 1] += 0.002;
-                if (pArr[i * 3 + 1] > 6) pArr[i * 3 + 1] = 0;
-            }
-            particles.geometry.attributes.position.needsUpdate = true;
-
-            // Motion flash on ground dots
-            if (motionFlash > 0) {
-                motionFlash -= 0.02;
-                groundLight.intensity = 0.3 + motionFlash * 0.5;
-            } else {
-                groundLight.intensity = 0.3;
-            }
-
-            renderer.render(scene, camera);
-        }
-        animateScene(0);
-
-        // ═══════════════════════════════════════════════════
-        // AUDIO
-        // ═══════════════════════════════════════════════════
-        let audioCtx;
-        let beepOn = localStorage.getItem('beep') !== 'false';
-        const btnMute = document.getElementById('btn-mute');
-
-        function syncMute() { btnMute.innerText = beepOn ? '🔔 ON' : '🔕 OFF'; btnMute.classList.toggle('on', beepOn); }
-        syncMute();
-        btnMute.addEventListener('click', () => { beepOn = !beepOn; localStorage.setItem('beep', beepOn); syncMute(); });
-
-        function playBeep() {
-            if (!beepOn) return;
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const o = audioCtx.createOscillator(), g = audioCtx.createGain();
-            o.type = 'sine'; o.frequency.setValueAtTime(220, audioCtx.currentTime);
-            g.gain.setValueAtTime(0.06, audioCtx.currentTime);
-            o.connect(g); g.connect(audioCtx.destination);
-            o.start(); o.stop(audioCtx.currentTime + 0.1);
+        // Variance
+        if (laptopHist.length > 2) {
+            const mean = laptopHist.reduce((a, b) => a + b, 0) / laptopHist.length;
+            const std = Math.sqrt(laptopHist.reduce((a, b) => a + (b - mean) ** 2, 0) / laptopHist.length);
+            dom.mVar.textContent = std.toFixed(2);
         }
 
-        // ═══════════════════════════════════════════════════
-        // SPARKLINE
-        // ═══════════════════════════════════════════════════
-        const sparkCanvas = document.getElementById('sparkline');
-        const sparkData = [];
-        function drawSparkline() {
-            const ctx = sparkCanvas.getContext('2d');
-            const w = sparkCanvas.width = sparkCanvas.clientWidth * 2;
-            const h = sparkCanvas.height = sparkCanvas.clientHeight * 2;
-            ctx.clearRect(0, 0, w, h);
-            if (sparkData.length < 2) return;
-            ctx.beginPath();
-            ctx.strokeStyle = '#00d4ff';
-            ctx.lineWidth = 2;
-            for (let i = 0; i < sparkData.length; i++) {
-                const x = (i / (sparkData.length - 1)) * w;
-                const y = h - (sparkData[i] / 100) * h;
-                i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-            }
-            ctx.stroke();
+        // Phone node
+        const ph = d.phone || {};
+        const phoneOnline = d.phone_online || false;
+        dom.phoneSignal.textContent = ph.signal || '--';
+        dom.phoneZscore.textContent = (ph.zscore || 0).toFixed(2);
+        dom.phoneBar.style.width = (ph.signal || 0) + '%';
+        dom.phoneStatus.textContent = phoneOnline ? 'ONLINE' : 'OFFLINE';
+        dom.phoneStatus.className = 'node-status ' + (phoneOnline ? 'online' : 'offline');
+
+        if (phoneOnline) {
+            phoneHist.push(ph.signal || 0);
+            if (phoneHist.length > 60) phoneHist.shift();
         }
 
-        // ═══════════════════════════════════════════════════
-        // UI REFS
-        // ═══════════════════════════════════════════════════
-        const $rssi = document.getElementById('s-rssi');
-        const $var = document.getElementById('s-var');
-        const $motion = document.getElementById('s-motion');
-        const $persons = document.getElementById('s-persons');
-        const $personDots = document.querySelectorAll('.pdot');
-        const $presence = document.getElementById('presence-badge');
-        const $hr = document.getElementById('v-hr');
-        const $resp = document.getElementById('v-resp');
-        const $conf = document.getElementById('v-conf');
-        const $barHr = document.getElementById('bar-hr');
-        const $barResp = document.getElementById('bar-resp');
-        const $barConf = document.getElementById('bar-conf');
-        const $offline = document.getElementById('offline-banner');
-        const $connDot = document.querySelector('.pill-demo');
-        const $logScroll = document.getElementById('log-scroll');
-        const $scenarioDesc = document.getElementById('scenario-desc');
+        // Fused detection
+        if (d.motion) {
+            setPresent(d.confidence, d.source);
 
-        // ═══════════════════════════════════════════════════
-        // STATE
-        // ═══════════════════════════════════════════════════
-        let fails = 0;
-        let clientSim = false;
-        let lastMotionTs = 0;
-        let presenceTimeout = null;
-        let logEntries = [];
-        const rawHist = [];
-        let bootTime = Date.now();
-        let isCalibrating = true;
+            // Flash border
+            dom.flash.className = 'motion-flash active' + (d.confidence >= 1 ? '' : ' amber');
+            setTimeout(() => dom.flash.className = 'motion-flash', 300);
 
-        // ═══════════════════════════════════════════════════
-        // SETTINGS
-        // ═══════════════════════════════════════════════════
-        const gearBtn = document.getElementById('gear-btn');
-        const settingsDrawer = document.getElementById('settings-drawer');
-        gearBtn.addEventListener('click', () => settingsDrawer.classList.toggle('open'));
-
-        const threshSlider = document.getElementById('thresh-slider');
-        const threshVal = document.getElementById('thresh-val');
-        threshSlider.addEventListener('input', e => threshVal.innerText = parseFloat(e.target.value).toFixed(1) + 'σ');
-        threshSlider.addEventListener('change', e => fetch(`http://localhost:5000/set_threshold/${e.target.value}`).catch(() => { }));
-
-        const btnSim = document.getElementById('btn-sim');
-        const pillDemo = document.getElementById('pill-demo');
-        btnSim.addEventListener('click', () => {
-            clientSim = !clientSim;
-            btnSim.innerText = clientSim ? 'ON' : 'OFF';
-            btnSim.classList.toggle('on', clientSim);
-            pillDemo.style.display = clientSim ? 'inline-block' : 'none';
-        });
-        pillDemo.addEventListener('click', () => btnSim.click());
-
-        const btnLogToggle = document.getElementById('btn-log-toggle');
-        const logDrawer = document.getElementById('log-drawer');
-        btnLogToggle.addEventListener('click', () => {
-            logDrawer.classList.toggle('open');
-            btnLogToggle.innerText = logDrawer.classList.contains('open') ? 'HIDE' : 'SHOW';
-        });
-
-        document.getElementById('btn-clear').addEventListener('click', () => { $logScroll.innerHTML = ''; });
-        document.getElementById('btn-export').addEventListener('click', () => {
-            if (!logEntries.length) return;
-            let csv = 'Time,Event\n';
-            logEntries.forEach(e => csv += `${e.time},"${e.text}"\n`);
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-            a.download = 'sensing_log.csv'; a.click();
-        });
-
-        // Mode pills
-        document.getElementById('mode-motion').addEventListener('click', function () {
-            document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
-            this.classList.add('active');
-            $scenarioDesc.innerText = 'Presence detection and motion tracking from WiFi signal disturbances.';
-        });
-        document.getElementById('mode-breath').addEventListener('click', function () {
-            document.querySelectorAll('.mode-pill').forEach(p => p.classList.remove('active'));
-            this.classList.add('active');
-            $scenarioDesc.innerText = 'Contactless respiration and heart rate monitoring via CSI phase analysis.';
-        });
-
-        // Keyboard shortcuts
-        document.addEventListener('keydown', e => {
-            if (e.key === 's' || e.key === 'S') settingsDrawer.classList.toggle('open');
-            if (e.key === 'l' || e.key === 'L') btnLogToggle.click();
-            if (e.key === 'm' || e.key === 'M') btnMute.click();
-            if (e.key === ' ') { e.preventDefault(); btnSim.click(); }
-        });
-
-        // ═══════════════════════════════════════════════════
-        // CLIENT SIMULATION
-        // ═══════════════════════════════════════════════════
-        function getSimCSI() {
-            const t = performance.now() / 1000;
-            const amp = [], ph = [];
-            for (let i = 0; i < 56; i++) {
-                const base = 50 + 5 * Math.sin(2 * Math.PI * i / 56);
-                const breath = 3 * Math.sin(2 * Math.PI * 0.25 * t + i * 0.1);
-                const hr = 0.8 * Math.sin(2 * Math.PI * 1.2 * t + i * 0.05);
-                amp.push(Math.abs(base + breath + hr + (Math.random() - 0.5) * 3));
-                ph.push(Math.random() * 2 * Math.PI - Math.PI);
-            }
-            return { breathing_bpm: 15 + (Math.random() - 0.5) * 2, heart_rate_bpm: 72 + (Math.random() - 0.5) * 4, motion_power: 5 + Math.random() * 2 };
-        }
-
-        // ═══════════════════════════════════════════════════
-        // LOGGING
-        // ═══════════════════════════════════════════════════
-        function addLog(type, text) {
-            const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-            const div = document.createElement('div');
-            div.className = 'log-entry' + (type === 'motion' ? ' alert' : '');
-            div.innerText = `[${ts}] ${text}`;
-            $logScroll.prepend(div);
-            logEntries.push({ time: ts, text });
-            if ($logScroll.children.length > 50) $logScroll.removeChild($logScroll.lastChild);
-        }
-
-        // ═══════════════════════════════════════════════════
-        // MAIN POLL
-        // ═══════════════════════════════════════════════════
-        let lastBreathLog = 0;
-        async function poll() {
-            // RSSI
-            try {
-                const r = await fetch('http://localhost:5000/rssi');
-                const d = await r.json();
-                fails = 0;
-                $offline.style.display = 'none';
-
-                // Signal
-                $rssi.innerText = d.signal + '%';
-                rawHist.push(d.signal);
-                if (rawHist.length > 10) rawHist.shift();
-                const mean = rawHist.reduce((a, b) => a + b, 0) / rawHist.length;
-                const std = Math.sqrt(rawHist.reduce((a, b) => a + (b - mean) ** 2, 0) / rawHist.length);
-                $var.innerText = std.toFixed(2);
-                $motion.innerText = Math.abs(d.zscore).toFixed(3);
-
-                // Sparkline
-                sparkData.push(d.signal);
-                if (sparkData.length > 30) sparkData.shift();
-                drawSparkline();
-
-                // Confidence = signal strength
-                const conf = d.signal;
-                $conf.innerText = conf;
-                $barConf.style.width = conf + '%';
-
-                // Calibrating
-                if (isCalibrating && Date.now() - bootTime > 12000) isCalibrating = false;
-
-                // Motion / presence
-                if (d.motion) {
-                    figurePresent = true;
-                    scanPulse = 1;
-                    motionFlash = 1;
-                    $presence.className = 'presence-badge present';
-                    $presence.innerText = 'PRESENT';
-                    $persons.innerText = '1';
-                    $personDots[0].classList.add('active');
-                    $motion.classList.add('alert');
-                    clearTimeout(presenceTimeout);
-                    presenceTimeout = setTimeout(() => {
-                        $presence.className = 'presence-badge absent';
-                        $presence.innerText = 'ABSENT';
-                        $persons.innerText = '0';
-                        $personDots[0].classList.remove('active');
-                        figurePresent = false;
-                    }, 8000);
-
-                    if (d.timestamp !== lastMotionTs) {
-                        lastMotionTs = d.timestamp;
-                        playBeep();
-                        addLog('motion', `MOTION  Z:${(d.zscore > 0 ? '+' : '') + d.zscore.toFixed(2)}  Signal:${d.signal}%`);
-                    }
-                } else {
-                    $motion.classList.remove('alert');
-                }
-            } catch (err) {
-                fails++;
-                if (fails >= 3) { $offline.style.display = 'block'; }
-            }
-
-            // CSI
-            let csi = null;
-            if (clientSim) {
-                csi = getSimCSI();
-                figurePresent = true;
-                $presence.className = 'presence-badge present';
-                $presence.innerText = 'PRESENT';
-                $persons.innerText = '1';
-                $personDots[0].classList.add('active');
-            } else {
-                try {
-                    const r2 = await fetch('http://localhost:5000/csi');
-                    csi = await r2.json();
-                } catch (e) { }
-            }
-
-            if (csi) {
-                const bpm = csi.breathing_bpm || 0;
-                const hr = csi.heart_rate_bpm || 0;
-
-                if (!isCalibrating && bpm > 0) {
-                    $resp.innerText = bpm.toFixed(0);
-                    $barResp.style.width = Math.min((bpm / 30) * 100, 100) + '%';
-                    if (bpm >= 12 && bpm <= 20) { $barResp.style.background = 'var(--green)'; $resp.style.color = 'var(--green)'; }
-                    else { $barResp.style.background = 'var(--amber)'; $resp.style.color = 'var(--amber)'; }
-                }
-                if (!isCalibrating && hr > 0) {
-                    $hr.innerText = hr.toFixed(0);
-                    $barHr.style.width = Math.min((hr / 120) * 100, 100) + '%';
-                }
-
-                // Breath log
-                if (bpm > 0 && Date.now() - lastBreathLog > 10000) {
-                    lastBreathLog = Date.now();
-                    addLog('breath', `BREATH ${bpm.toFixed(1)} BPM`);
-                }
+            if (d.timestamp !== lastMotionTs) {
+                lastMotionTs = d.timestamp;
+                playBeep(d.confidence >= 1 ? 440 : 330);
+                const srcLabel = d.source === 'both' ? 'BOTH CONFIRMED' : d.source.toUpperCase();
+                addLog('motion', `MOTION · ${srcLabel} · Conf: ${(d.confidence * 100).toFixed(0)}% · Z:${(lp.zscore||0).toFixed(2)}`);
             }
         }
 
-        setInterval(poll, 1000);
-    </script>
+        drawChart();
+    } catch (err) {
+        fails++;
+        if (fails >= 3) dom.offline.style.display = 'block';
+    }
+
+    // CSI data
+    let csi = null;
+    if (clientSim) {
+        csi = getSimCSI();
+        setPresent(1, 'sim');
+    } else {
+        try {
+            const r2 = await fetch('/csi');
+            csi = await r2.json();
+        } catch (e) {}
+    }
+
+    if (csi) {
+        const hr = csi.heart_rate_bpm || 0;
+        const br = csi.breathing_bpm || 0;
+        if (hr > 0) dom.mHr.innerHTML = hr.toFixed(0) + ' <small style="font-size:0.6rem;color:var(--text-dim)">BPM</small>';
+        if (br > 0) dom.mBreath.innerHTML = br.toFixed(0) + ' <small style="font-size:0.6rem;color:var(--text-dim)">RPM</small>';
+    }
+}
+
+setInterval(poll, 1000);
+
+// ═══════════════════════════════════════════════════
+// UI CONTROLS
+// ═══════════════════════════════════════════════════
+
+// Settings
+dom.btnSettings.addEventListener('click', () => dom.settingsPanel.classList.toggle('open'));
+
+// Threshold
+dom.threshSlider.addEventListener('input', e => {
+    dom.threshDisplay.textContent = parseFloat(e.target.value).toFixed(1) + 'σ';
+});
+dom.threshSlider.addEventListener('change', e => {
+    fetch('/set_threshold/' + e.target.value).catch(() => {});
+});
+
+// Audio
+function syncAudio() {
+    dom.btnMute.textContent = beepOn ? '🔔' : '🔕';
+    dom.toggleAudio.textContent = beepOn ? 'ON' : 'OFF';
+    dom.toggleAudio.classList.toggle('on', beepOn);
+}
+syncAudio();
+dom.btnMute.addEventListener('click', () => { beepOn = !beepOn; localStorage.setItem('beep', beepOn); syncAudio(); });
+dom.toggleAudio.addEventListener('click', () => dom.btnMute.click());
+
+// Simulation
+function syncSim() {
+    dom.btnSim.classList.toggle('active', clientSim);
+    dom.btnSim.textContent = clientSim ? 'SIM' : 'SIM';
+    dom.toggleSim.textContent = clientSim ? 'ON' : 'OFF';
+    dom.toggleSim.classList.toggle('on', clientSim);
+}
+dom.btnSim.addEventListener('click', () => { clientSim = !clientSim; syncSim(); });
+dom.toggleSim.addEventListener('click', () => dom.btnSim.click());
+
+// Log controls
+$('btn-clear').addEventListener('click', () => {
+    dom.logScroll.innerHTML = '<div class="log-empty">Log cleared</div>';
+    logEntries = [];
+    firstLog = true;
+    dom.eventCount.textContent = '0 events';
+});
+$('btn-export').addEventListener('click', () => {
+    if (!logEntries.length) return;
+    let csv = 'Time,Event\n';
+    logEntries.forEach(e => csv += `${e.time},"${e.text}"\n`);
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = 'humansense_log.csv';
+    a.click();
+});
+
+// Keyboard shortcuts
+document.addEventListener('keydown', e => {
+    if (e.key === 's' || e.key === 'S') dom.settingsPanel.classList.toggle('open');
+    if (e.key === 'm' || e.key === 'M') dom.btnMute.click();
+    if (e.key === ' ') { e.preventDefault(); dom.btnSim.click(); }
+});
+</script>
 </body>
-
 </html>
