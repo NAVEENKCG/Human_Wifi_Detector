@@ -3,10 +3,12 @@ import re
 import time
 import json
 import math
+import random
 import argparse
 import threading
+import statistics
 from collections import deque
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 # ---------------------------------------------------------------------------
@@ -25,7 +27,7 @@ app = Flask(__name__, static_folder='static')
 CORS(app)
 
 # ---------------------------------------------------------------------------
-# Global state
+# Global state — Laptop node
 # ---------------------------------------------------------------------------
 rssi_state = {
     "signal": 0,
@@ -35,6 +37,30 @@ rssi_state = {
     "router": "Unknown"
 }
 
+# ---------------------------------------------------------------------------
+# Global state — Phone node
+# ---------------------------------------------------------------------------
+phone_state = {
+    "signal": 0,
+    "zscore": 0.0,
+    "motion": False,
+    "timestamp": 0,
+    "last_seen": 0
+}
+
+# ---------------------------------------------------------------------------
+# Global state — Fused (cross-validated) detection
+# ---------------------------------------------------------------------------
+fused_state = {
+    "motion": False,
+    "confidence": 0.0,
+    "source": "none",
+    "timestamp": 0
+}
+
+# ---------------------------------------------------------------------------
+# Global state — CSI
+# ---------------------------------------------------------------------------
 csi_state = {
     "subcarriers": 56,
     "amplitude": [0.0] * 56,
@@ -50,6 +76,11 @@ WINDOW_SIZE = 10
 Z_SCORE_THRESHOLD = 2.0
 REQUIRED_CONSECUTIVE = 2
 current_threshold = Z_SCORE_THRESHOLD
+consecutive_anomalies = 0
+
+# Sensor windows
+laptop_window = deque(maxlen=20)
+phone_window = deque(maxlen=20)
 
 # Breathing extraction buffers
 phase_buffer = deque(maxlen=300)       # ~5 min at 1 Hz
@@ -68,6 +99,15 @@ def _std(arr):
         return 0.0
     m = _mean(arr)
     return math.sqrt(sum((x - m) ** 2 for x in arr) / len(arr))
+
+
+def zscore(value, window):
+    """Compute Z-score of a value against a rolling window."""
+    if len(window) < 5:
+        return 0.0
+    m = statistics.mean(window)
+    s = statistics.stdev(window) or 0.001
+    return (value - m) / s
 
 
 def _bandpass_simple(signal_data, low_hz, high_hz, fs):
@@ -171,8 +211,6 @@ def get_wifi_stats():
 # Simulated CSI generator (no hardware needed)
 # ---------------------------------------------------------------------------
 
-import random
-
 def get_simulated_csi():
     """Simulate 56 subcarrier amplitudes + phases like ESP32-S3 output."""
     t = time.time()
@@ -193,47 +231,76 @@ def get_simulated_csi():
 
 
 # ---------------------------------------------------------------------------
+# Fused detection (cross-validation between laptop and phone)
+# ---------------------------------------------------------------------------
+
+def update_fused():
+    """Update fused detection state from both nodes."""
+    global fused_state
+
+    laptop_motion = rssi_state["motion"]
+    phone_motion = phone_state["motion"]
+    phone_fresh = (time.time() - phone_state["last_seen"]) < 5
+
+    # Confidence scoring
+    confidence = 0.0
+    if laptop_motion:
+        confidence += 0.5
+    if phone_motion and phone_fresh:
+        confidence += 0.5
+
+    # Source label
+    if laptop_motion and phone_motion and phone_fresh:
+        source = "both"
+    elif laptop_motion:
+        source = "laptop"
+    elif phone_motion and phone_fresh:
+        source = "phone"
+    else:
+        source = "none"
+
+    fused_state = {
+        "motion": confidence >= 0.5,
+        "confidence": round(confidence, 2),
+        "source": source,
+        "timestamp": time.time()
+    }
+
+
+# ---------------------------------------------------------------------------
 # Background monitoring threads
 # ---------------------------------------------------------------------------
 
 def monitor_wifi():
     """RSSI monitoring loop — runs continuously."""
-    global rssi_state
-    window = deque(maxlen=WINDOW_SIZE)
-    consecutive_anomalies = 0
+    global rssi_state, consecutive_anomalies
 
     while True:
         signal, ssid = get_wifi_stats()
         timestamp = time.time()
 
-        window.append(signal)
-        z_score = 0.0
+        laptop_window.append(signal)
+        z = zscore(signal, laptop_window)
         motion_detected = False
 
-        if len(window) == WINDOW_SIZE:
-            mean = sum(window) / WINDOW_SIZE
-            stdev = (sum((x - mean) ** 2 for x in window) / WINDOW_SIZE) ** 0.5
-
-            if stdev > 0:
-                z_score = (signal - mean) / stdev
-            else:
-                z_score = 0.0
-
-            if abs(z_score) > current_threshold:
-                consecutive_anomalies += 1
-                if consecutive_anomalies >= REQUIRED_CONSECUTIVE:
-                    motion_detected = True
-                    consecutive_anomalies = 0
-            else:
+        if len(laptop_window) >= 5 and abs(z) > current_threshold:
+            consecutive_anomalies += 1
+            if consecutive_anomalies >= REQUIRED_CONSECUTIVE:
+                motion_detected = True
                 consecutive_anomalies = 0
+        else:
+            consecutive_anomalies = 0
 
         rssi_state = {
             "signal": signal,
-            "zscore": round(z_score, 2),
+            "zscore": round(z, 3),
             "motion": motion_detected,
             "timestamp": timestamp,
             "router": ssid
         }
+
+        # Update fused detection
+        update_fused()
 
         time.sleep(1)
 
@@ -286,6 +353,42 @@ def csi():
     return jsonify(csi_state)
 
 
+@app.route("/phone", methods=["POST"])
+def receive_phone():
+    """Phone posts its RSSI / RTT-derived signal here every second."""
+    global phone_state
+    data = request.json
+    signal = data.get("signal", 0)
+
+    phone_window.append(signal)
+    z = zscore(signal, phone_window)
+    motion = len(phone_window) >= 5 and abs(z) > current_threshold
+
+    phone_state = {
+        "signal": signal,
+        "zscore": round(z, 3),
+        "motion": motion,
+        "timestamp": time.time(),
+        "last_seen": time.time()
+    }
+
+    # Re-compute fused result
+    update_fused()
+
+    return jsonify({"status": "ok", "motion": motion, "zscore": round(z, 3)})
+
+
+@app.route("/fused")
+def fused():
+    """Return cross-validated fused detection from all nodes."""
+    return jsonify({
+        **fused_state,
+        "laptop": rssi_state,
+        "phone": phone_state,
+        "phone_online": (time.time() - phone_state["last_seen"]) < 5
+    })
+
+
 @app.route("/set_threshold/<float:val>")
 def set_threshold(val):
     global current_threshold
@@ -299,7 +402,11 @@ def status():
         "mode": "simulate" if SIMULATE_CSI else "rssi",
         "csi_available": SIMULATE_CSI,
         "threshold": current_threshold,
-        "uptime": round(time.time() - boot_time, 1)
+        "uptime": round(time.time() - boot_time, 1),
+        "nodes": {
+            "laptop": True,
+            "phone": (time.time() - phone_state["last_seen"]) < 5
+        }
     })
 
 
@@ -318,7 +425,7 @@ if __name__ == "__main__":
     # Always start RSSI monitoring
     rssi_thread = threading.Thread(target=monitor_wifi, daemon=True)
     rssi_thread.start()
-    print("[+] RSSI monitoring started")
+    print("[+] RSSI monitoring started (laptop node)")
 
     # Start CSI simulation if flag is set
     if SIMULATE_CSI:
@@ -328,5 +435,7 @@ if __name__ == "__main__":
     else:
         print("[i] CSI simulation OFF — run with --simulate to enable")
 
+    print("[+] Phone node endpoint ready at POST /phone")
+    print("[+] Fused detection endpoint at GET /fused")
     print(f"[+] Starting Flask server on port {args.port}...")
     app.run(host="0.0.0.0", port=args.port, debug=False)

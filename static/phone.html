@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Phone Node — HumanSense</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0a0807;
+            --surface: #12100e;
+            --green: #00ff88;
+            --green-dim: rgba(0, 255, 136, 0.15);
+            --amber: #c8a050;
+            --alert: #ff4444;
+            --text: #d4c8b8;
+            --text-dim: #6a5e50;
+            --accent: #00d4ff;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            overflow: hidden;
+        }
+
+        /* Animated background grid */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-image:
+                linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+            width: 100%;
+            max-width: 360px;
+        }
+
+        /* Header */
+        .node-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: var(--green);
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+        }
+        .node-badge .dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 6px var(--green);
+            animation: pulse 2s infinite;
+        }
+        .node-badge .dot.offline {
+            background: var(--text-dim);
+            box-shadow: none;
+            animation: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.4; }
+        }
+
+        /* Signal gauge */
+        .gauge-wrap {
+            position: relative;
+            width: 200px;
+            height: 200px;
+        }
+        .gauge-ring {
+            width: 100%;
+            height: 100%;
+        }
+        .gauge-bg {
+            fill: none;
+            stroke: rgba(255,255,255,0.06);
+            stroke-width: 8;
+        }
+        .gauge-fill {
+            fill: none;
+            stroke: var(--green);
+            stroke-width: 8;
+            stroke-linecap: round;
+            stroke-dasharray: 502;
+            stroke-dashoffset: 502;
+            transition: stroke-dashoffset 0.6s ease, stroke 0.3s;
+            filter: drop-shadow(0 0 6px var(--green));
+        }
+        .gauge-center {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+        }
+        .gauge-value {
+            font-size: 3.5rem;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1;
+        }
+        .gauge-unit {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-top: 0.25rem;
+        }
+
+        /* Stats grid */
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+            width: 100%;
+        }
+        .stat-card {
+            background: var(--surface);
+            border: 1px solid rgba(255,200,100,0.08);
+            border-radius: 12px;
+            padding: 0.85rem;
+            text-align: center;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+        }
+        .stat-label {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+        }
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stat-value.motion { color: var(--alert); }
+        .stat-value.ok { color: var(--green); }
+
+        /* Status bar */
+        .status-bar {
+            font-size: 0.7rem;
+            color: var(--text-dim);
+            text-align: center;
+            min-height: 1.2rem;
+        }
+
+        /* Start button */
+        .btn-start {
+            width: 100%;
+            padding: 1rem;
+            border: none;
+            border-radius: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+        }
+        .btn-start.idle {
+            background: var(--green);
+            color: var(--bg);
+        }
+        .btn-start.running {
+            background: rgba(255, 68, 68, 0.2);
+            border: 1px solid var(--alert);
+            color: var(--alert);
+        }
+        .btn-start:active { transform: scale(0.96); }
+
+        /* Motion flash */
+        .motion-flash {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            border: 3px solid var(--alert);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 100;
+        }
+        .motion-flash.active { opacity: 1; }
+
+        /* Connection indicator */
+        .conn-bar {
+            width: 100%;
+            height: 3px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .conn-fill {
+            height: 100%;
+            background: var(--green);
+            width: 0%;
+            transition: width 0.3s;
+            border-radius: 2px;
+        }
+
+        .server-input {
+            width: 100%;
+            padding: 0.6rem 0.8rem;
+            background: var(--surface);
+            border: 1px solid rgba(255,200,100,0.1);
+            border-radius: 8px;
+            color: var(--text);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            text-align: center;
+            outline: none;
+        }
+        .server-input:focus {
+            border-color: var(--accent);
+        }
+        .input-label {
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.3rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="motion-flash" id="flash"></div>
+
+<div class="container">
+    <div class="node-badge">
+        <span class="dot" id="dot"></span>
+        <span>📡 PHONE NODE</span>
+    </div>
+
+    <div class="gauge-wrap">
+        <svg class="gauge-ring" viewBox="0 0 180 180">
+            <circle class="gauge-bg" cx="90" cy="90" r="80" />
+            <circle class="gauge-fill" id="gauge" cx="90" cy="90" r="80"
+                    transform="rotate(-90 90 90)" />
+        </svg>
+        <div class="gauge-center">
+            <div class="gauge-value" id="signal-val">--</div>
+            <div class="gauge-unit">% signal</div>
+        </div>
+    </div>
+
+    <div class="stats">
+        <div class="stat-card">
+            <div class="stat-label">RTT</div>
+            <div class="stat-value" id="rtt-val">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Z-Score</div>
+            <div class="stat-value" id="zscore-val">--</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Pings Sent</div>
+            <div class="stat-value ok" id="pings-val">0</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-label">Motion</div>
+            <div class="stat-value" id="motion-val">IDLE</div>
+        </div>
+    </div>
+
+    <div class="conn-bar"><div class="conn-fill" id="conn-fill"></div></div>
+    <div class="status-bar" id="status">Tap START to begin sensing</div>
+
+    <div style="width:100%">
+        <div class="input-label">Server Address</div>
+        <input class="server-input" id="server-url" type="text"
+               placeholder="http://192.168.1.5:5000">
+    </div>
+
+    <button class="btn-start idle" id="btn" onclick="toggle()">▶  START</button>
+</div>
+
+<script>
+    let running = false;
+    let interval = null;
+    let pings = 0;
+
+    const $signal = document.getElementById('signal-val');
+    const $rtt = document.getElementById('rtt-val');
+    const $zscore = document.getElementById('zscore-val');
+    const $motion = document.getElementById('motion-val');
+    const $pings = document.getElementById('pings-val');
+    const $status = document.getElementById('status');
+    const $gauge = document.getElementById('gauge');
+    const $dot = document.getElementById('dot');
+    const $btn = document.getElementById('btn');
+    const $flash = document.getElementById('flash');
+    const $conn = document.getElementById('conn-fill');
+    const $serverUrl = document.getElementById('server-url');
+
+    // Auto-detect server: use current origin if served from Flask
+    const currentOrigin = window.location.origin;
+    if (currentOrigin && !currentOrigin.includes('file://')) {
+        $serverUrl.value = currentOrigin;
+    }
+
+    function getServer() {
+        return $serverUrl.value.replace(/\/+$/, '') || currentOrigin;
+    }
+
+    function toggle() {
+        running = !running;
+        if (running) {
+            $btn.textContent = '⬛  STOP';
+            $btn.className = 'btn-start running';
+            $dot.className = 'dot';
+            $serverUrl.disabled = true;
+            interval = setInterval(sendPing, 1000);
+            $status.textContent = 'Sensing active...';
+        } else {
+            clearInterval(interval);
+            $btn.textContent = '▶  START';
+            $btn.className = 'btn-start idle';
+            $dot.className = 'dot offline';
+            $serverUrl.disabled = false;
+            $status.textContent = 'Stopped';
+            $conn.style.width = '0%';
+        }
+    }
+
+    async function sendPing() {
+        const server = getServer();
+        const start = performance.now();
+
+        try {
+            // Measure RTT to server
+            await fetch(server + '/rssi');
+            const rtt = Math.round(performance.now() - start);
+
+            // Map RTT to signal proxy (lower RTT = better signal)
+            // 10ms → 95%, 200ms → 20%
+            const signal = Math.max(5, Math.min(100, Math.round(100 - rtt * 0.4)));
+
+            // Update UI
+            $signal.textContent = signal;
+            $rtt.textContent = rtt + 'ms';
+
+            // Update gauge
+            const circumference = 2 * Math.PI * 80; // ~502
+            const offset = circumference - (signal / 100) * circumference;
+            $gauge.style.strokeDashoffset = offset;
+
+            // Color based on signal quality
+            if (signal > 70) {
+                $gauge.style.stroke = '#00ff88';
+            } else if (signal > 40) {
+                $gauge.style.stroke = '#c8a050';
+            } else {
+                $gauge.style.stroke = '#ff4444';
+            }
+
+            // Connection bar
+            $conn.style.width = '100%';
+            setTimeout(() => { if (running) $conn.style.width = '20%'; }, 600);
+
+            // Send to server
+            const res = await fetch(server + '/phone', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    signal: signal,
+                    rtt: rtt,
+                    timestamp: Date.now() / 1000
+                })
+            });
+            const data = await res.json();
+
+            pings++;
+            $pings.textContent = pings;
+
+            // Z-score from server response
+            if (data.zscore !== undefined) {
+                $zscore.textContent = data.zscore.toFixed(2);
+            }
+
+            // Motion status
+            if (data.motion) {
+                $motion.textContent = 'MOTION!';
+                $motion.className = 'stat-value motion';
+                $flash.classList.add('active');
+                setTimeout(() => $flash.classList.remove('active'), 300);
+            } else {
+                $motion.textContent = 'IDLE';
+                $motion.className = 'stat-value ok';
+            }
+
+            $status.textContent = `RTT: ${rtt}ms → Signal: ${signal}% → Sent ✓`;
+
+        } catch (e) {
+            $status.textContent = '⚠ Connection failed — check server IP';
+            $conn.style.width = '0%';
+            $signal.textContent = '--';
+        }
+    }
+</script>
+</body>
+</html>
