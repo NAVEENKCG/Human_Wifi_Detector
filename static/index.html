@@ -125,14 +125,68 @@
         /* ── Detection Hero ── */
         .hero {
             text-align: center;
-            padding: 2rem 0 1.5rem;
+            padding: 0.5rem 0 1.5rem;
+        }
+
+        /* Wave canvas */
+        .wave-stage {
+            position: relative;
+            width: 100%;
+            max-width: 500px;
+            height: 360px;
+            margin: 0 auto 1rem;
+            overflow: hidden;
+            border-radius: 20px;
+            background: rgba(10, 14, 20, 0.6);
+            border: 1px solid var(--border);
+        }
+        #wave-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .wave-label {
+            position: absolute;
+            font-size: 0.6rem;
+            text-transform: uppercase;
+            letter-spacing: 0.12em;
+            color: var(--text-dim);
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+        }
+        .wave-label-router {
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .wave-label-sensor {
+            bottom: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        .wave-label .icon {
+            font-size: 1rem;
+        }
+        .wave-label .rssi-live {
+            color: var(--cyan);
+            font-weight: 700;
+        }
+        .wave-person-wrap {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 2;
+            pointer-events: none;
         }
 
         .detection-zone {
             position: relative;
-            width: 200px;
-            height: 200px;
-            margin: 0 auto 1.5rem;
+            width: 100px;
+            height: 140px;
         }
 
         /* Animated pulse rings */
@@ -540,7 +594,8 @@
         /* ── Responsive ── */
         @media (max-width: 500px) {
             .metrics { grid-template-columns: repeat(2, 1fr); }
-            .detection-zone { width: 160px; height: 160px; }
+            .wave-stage { height: 280px; }
+            .detection-zone { width: 80px; height: 110px; }
             .status-text { font-size: 1.4rem; }
             .node-signal { font-size: 1.6rem; }
         }
@@ -582,29 +637,36 @@
 
     <!-- Detection hero -->
     <section class="hero" id="hero">
-        <div class="detection-zone" id="detection-zone">
-            <div class="pulse-ring"></div>
-            <div class="pulse-ring"></div>
-            <div class="pulse-ring"></div>
-            <div class="person-icon">
-                <svg viewBox="0 0 80 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Head -->
-                    <circle class="body-fill" cx="40" cy="18" r="14" />
-                    <!-- Body -->
-                    <path class="body-fill" d="M24 40 C24 36 32 32 40 32 C48 32 56 36 56 40 L56 72 C56 76 52 80 48 80 L32 80 C28 80 24 76 24 72 Z"/>
-                    <!-- Left arm -->
-                    <path class="body-fill" d="M24 42 L10 62 C8 65 10 68 13 67 L24 56 Z"/>
-                    <!-- Right arm -->
-                    <path class="body-fill" d="M56 42 L70 62 C72 65 70 68 67 67 L56 56 Z"/>
-                    <!-- Left leg -->
-                    <path class="body-fill" d="M28 78 L24 112 C23 116 28 117 30 114 L36 80 Z"/>
-                    <!-- Right leg -->
-                    <path class="body-fill" d="M52 78 L56 112 C57 116 52 117 50 114 L44 80 Z"/>
-                </svg>
+        <!-- WiFi Wave Propagation Visualization -->
+        <div class="wave-stage">
+            <canvas id="wave-canvas"></canvas>
+            <div class="wave-label wave-label-router">
+                <span class="icon">📡</span>
+                <span>Router</span>
+                <span class="rssi-live" id="wave-rssi">--% RSSI</span>
+            </div>
+            <div class="wave-person-wrap" id="detection-zone">
+                <div class="detection-zone">
+                    <div class="person-icon">
+                        <svg viewBox="0 0 80 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle class="body-fill" cx="40" cy="18" r="14" />
+                            <path class="body-fill" d="M24 40 C24 36 32 32 40 32 C48 32 56 36 56 40 L56 72 C56 76 52 80 48 80 L32 80 C28 80 24 76 24 72 Z"/>
+                            <path class="body-fill" d="M24 42 L10 62 C8 65 10 68 13 67 L24 56 Z"/>
+                            <path class="body-fill" d="M56 42 L70 62 C72 65 70 68 67 67 L56 56 Z"/>
+                            <path class="body-fill" d="M28 78 L24 112 C23 116 28 117 30 114 L36 80 Z"/>
+                            <path class="body-fill" d="M52 78 L56 112 C57 116 52 117 50 114 L44 80 Z"/>
+                        </svg>
+                    </div>
+                </div>
+            </div>
+            <div class="wave-label wave-label-sensor">
+                <span class="icon">💻</span>
+                <span>Sensor</span>
+                <span class="rssi-live" id="wave-zscore">Z: 0.00</span>
             </div>
         </div>
         <div class="status-text absent" id="status-text">NO PRESENCE</div>
-        <div class="status-sub" id="status-sub">Monitoring WiFi signal…<span class="source-tag" id="source-tag">—</span></div>
+        <div class="status-sub" id="status-sub">WiFi waves propagating normally<span class="source-tag" id="source-tag">—</span></div>
     </section>
 
     <!-- Confidence bar -->
@@ -752,6 +814,8 @@ const dom = {
     btnSettings:   $('btn-settings'),
     toggleAudio:   $('toggle-audio'),
     toggleSim:     $('toggle-sim'),
+    waveRssi:      $('wave-rssi'),
+    waveZscore:    $('wave-zscore'),
 };
 
 // ═══════════════════════════════════════════════════
@@ -765,6 +829,148 @@ let logEntries = [];
 const laptopHist = [];
 const phoneHist = [];
 let firstLog = true;
+
+// Wave animation state (driven by real signal data)
+let waveSignal = 50;     // current RSSI (0–100)
+let waveZscore = 0;      // current Z-score
+let waveMotion = false;  // motion detected
+let wavePresent = false; // person present
+
+// ═══════════════════════════════════════════════════
+// WIFI WAVE PROPAGATION ANIMATION
+// ═══════════════════════════════════════════════════
+const waveCanvas = $('wave-canvas');
+const waveCtx = waveCanvas.getContext('2d');
+
+function resizeWaveCanvas() {
+    const rect = waveCanvas.parentElement.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    waveCanvas.width = rect.width * dpr;
+    waveCanvas.height = rect.height * dpr;
+    waveCtx.scale(dpr, dpr);
+    waveCanvas._w = rect.width;
+    waveCanvas._h = rect.height;
+}
+resizeWaveCanvas();
+window.addEventListener('resize', resizeWaveCanvas);
+
+// Wave ring configuration
+const RING_COUNT = 18;
+const RING_SPEED = 0.6; // pixels per frame at 60fps
+const rings = [];
+for (let i = 0; i < RING_COUNT; i++) {
+    rings.push({
+        radius: (i / RING_COUNT) * 500,
+        born: performance.now() - i * 800
+    });
+}
+
+function animateWaves(timestamp) {
+    requestAnimationFrame(animateWaves);
+    const w = waveCanvas._w || 500;
+    const h = waveCanvas._h || 360;
+    waveCtx.clearRect(0, 0, w, h);
+
+    // Router source point (top center)
+    const rx = w / 2;
+    const ry = 35;
+    // Sensor point (bottom center)
+    const sx = w / 2;
+    const sy = h - 35;
+    // Person center
+    const px = w / 2;
+    const py = h / 2;
+
+    const maxRadius = Math.sqrt(w * w + h * h);
+    const signalFactor = waveSignal / 100; // 0–1 signal strength
+    const distortAmt = Math.min(Math.abs(waveZscore), 5); // capped at 5
+    const sec = timestamp * 0.001;
+
+    // Draw concentric wave rings from router
+    for (let i = 0; i < RING_COUNT; i++) {
+        const age = (timestamp - rings[i].born) * 0.001;
+        const r = (age * 80 * RING_SPEED) % maxRadius;
+
+        if (r < 5) {
+            rings[i].born = timestamp;
+            continue;
+        }
+
+        // Base alpha: fades with distance, scales with signal strength
+        const distanceFade = 1 - (r / maxRadius);
+        const alpha = distanceFade * signalFactor * 0.35;
+        if (alpha < 0.01) continue;
+
+        // Color: cyan when normal, shifts amber with motion intensity
+        const motionBlend = waveMotion ? Math.min(distortAmt / 3, 1) : 0;
+        const red = Math.round(0 + motionBlend * 255);
+        const green = Math.round(212 - motionBlend * 42);
+        const blue = Math.round(255 - motionBlend * 255);
+
+        waveCtx.beginPath();
+
+        if (wavePresent && distortAmt > 0.3) {
+            // Draw distorted ring — wave bends around person
+            const segments = 72;
+            for (let s = 0; s <= segments; s++) {
+                const angle = (s / segments) * Math.PI * 2;
+                let dr = r;
+
+                // Distortion near person: waves compress/stretch
+                const ptX = rx + Math.cos(angle) * r;
+                const ptY = ry + Math.sin(angle) * r;
+                const distToPerson = Math.sqrt((ptX - px) ** 2 + (ptY - py) ** 2);
+                const personRadius = 60;
+
+                if (distToPerson < personRadius * 2) {
+                    // Wave distortion: ripple effect near person
+                    const proximity = 1 - (distToPerson / (personRadius * 2));
+                    const ripple = Math.sin(sec * 4 + angle * 3 + i * 0.5) * proximity;
+                    dr += ripple * distortAmt * 12;
+                }
+
+                const x = rx + Math.cos(angle) * dr;
+                const y = ry + Math.sin(angle) * dr;
+                s === 0 ? waveCtx.moveTo(x, y) : waveCtx.lineTo(x, y);
+            }
+            waveCtx.closePath();
+        } else {
+            // Clean concentric circle
+            waveCtx.arc(rx, ry, r, 0, Math.PI * 2);
+        }
+
+        waveCtx.strokeStyle = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+        waveCtx.lineWidth = 1.5 + (waveMotion ? Math.sin(sec * 3 + i) * 0.5 : 0);
+        waveCtx.stroke();
+    }
+
+    // Draw signal attenuation zone behind person (shadow)
+    if (wavePresent) {
+        const shadowAlpha = 0.08 + distortAmt * 0.02;
+        const grad = waveCtx.createRadialGradient(px, py, 20, px, py, 80);
+        grad.addColorStop(0, `rgba(0, 255, 136, ${shadowAlpha})`);
+        grad.addColorStop(1, 'rgba(0, 255, 136, 0)');
+        waveCtx.beginPath();
+        waveCtx.arc(px, py, 80, 0, Math.PI * 2);
+        waveCtx.fillStyle = grad;
+        waveCtx.fill();
+    }
+
+    // Draw router broadcast dot
+    waveCtx.beginPath();
+    waveCtx.arc(rx, ry, 4 + Math.sin(sec * 2) * 1, 0, Math.PI * 2);
+    waveCtx.fillStyle = `rgba(0, 212, 255, ${0.6 + Math.sin(sec * 2) * 0.2})`;
+    waveCtx.fill();
+
+    // Draw sensor receive dot
+    const sensorAlpha = signalFactor * 0.5 + 0.1;
+    waveCtx.beginPath();
+    waveCtx.arc(sx, sy, 4, 0, Math.PI * 2);
+    waveCtx.fillStyle = `rgba(0, 255, 136, ${sensorAlpha})`;
+    waveCtx.fill();
+}
+
+requestAnimationFrame(animateWaves);
 
 // ═══════════════════════════════════════════════════
 // SPARKLINE CHART
@@ -823,6 +1029,8 @@ function setPresent(confidence, source) {
     dom.zone.classList.add('detecting');
     dom.statusText.className = 'status-text present';
     dom.statusText.textContent = 'PERSON DETECTED';
+    dom.statusSub.firstChild.textContent = 'WiFi waves disrupted by human body ';
+    wavePresent = true;
 
     const sourceLabels = {
         both: 'BOTH NODES',
@@ -842,9 +1050,12 @@ function setAbsent() {
     dom.zone.classList.remove('detecting');
     dom.statusText.className = 'status-text absent';
     dom.statusText.textContent = 'NO PRESENCE';
+    dom.statusSub.firstChild.textContent = 'WiFi waves propagating normally ';
     dom.sourceTag.textContent = '—';
     dom.confVal.textContent = '0%';
     dom.confFill.style.width = '0%';
+    wavePresent = false;
+    waveMotion = false;
 }
 
 // ═══════════════════════════════════════════════════
@@ -888,6 +1099,13 @@ async function poll() {
             dom.mVar.textContent = std.toFixed(2);
         }
 
+        // Feed wave animation with real data
+        waveSignal = lp.signal || 50;
+        waveZscore = lp.zscore || 0;
+        waveMotion = d.motion || false;
+        dom.waveRssi.textContent = (lp.signal || 0) + '% RSSI';
+        dom.waveZscore.textContent = 'Z: ' + (lp.zscore || 0).toFixed(2);
+
         // Phone node
         const ph = d.phone || {};
         const phoneOnline = d.phone_online || false;
@@ -929,6 +1147,10 @@ async function poll() {
     if (clientSim) {
         csi = getSimCSI();
         setPresent(1, 'sim');
+        waveSignal = 70 + Math.sin(performance.now() * 0.001) * 15;
+        waveZscore = 2.5 + Math.sin(performance.now() * 0.002) * 1;
+        waveMotion = true;
+        wavePresent = true;
     } else {
         try {
             const r2 = await fetch('/csi');
