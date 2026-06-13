@@ -1,1231 +1,802 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HumanSense — WiFi Presence Detector</title>
-    <meta name="description" content="WiFi-based human presence detection, vital sign monitoring, and 3-node motion sensing.">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg: #0a0e14;
-            --surface: #141a24;
-            --elevated: #1c2430;
-            --border: rgba(255, 255, 255, 0.06);
-            --border-hover: rgba(255, 255, 255, 0.12);
-            --green: #00ff88;
-            --green-bg: rgba(0, 255, 136, 0.08);
-            --green-border: rgba(0, 255, 136, 0.25);
-            --amber: #ffaa00;
-            --amber-bg: rgba(255, 170, 0, 0.08);
-            --red: #ff4444;
-            --red-bg: rgba(255, 68, 68, 0.08);
-            --cyan: #00d4ff;
-            --text: #e0dcd4;
-            --text-dim: rgba(224, 220, 212, 0.5);
-            --text-muted: rgba(224, 220, 212, 0.3);
-            --mono: 'JetBrains Mono', monospace;
-            --display: 'Syne', sans-serif;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Human WiFi Detector — 2 Floor</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+/* ── Reset & Base ──────────────────────────────────── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e1a;--surface:#0f1424;--elevated:#151b2e;
+  --teal:#1D9E75;--blue:#378ADD;--amber:#BA7517;--alert:#ff4444;
+  --text:#e0e6f0;--muted:#6b7a99;--border:rgba(255,255,255,0.06);
+  --glass:rgba(255,255,255,0.03);--glass-hover:rgba(255,255,255,0.07);
+  --glass-border:rgba(255,255,255,0.08);--glass-border-hover:rgba(255,255,255,0.18);
+  --font:'JetBrains Mono',monospace;
+}
+html{font-size:14px}
+body{background:var(--bg);color:var(--text);font-family:var(--font);
+  min-height:100vh;overflow-x:hidden;line-height:1.5}
+a{color:var(--teal);text-decoration:none}
 
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+/* ── Top bar ───────────────────────────────────────── */
+.topbar{position:sticky;top:0;z-index:40;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 24px;
+  background:rgba(10,14,26,0.85);backdrop-filter:blur(20px);
+  border-bottom:1px solid var(--border)}
+.topbar-title{font-weight:700;font-size:0.85rem;letter-spacing:0.12em;color:var(--text)}
+.topbar-title span{color:var(--teal)}
+.floor-badge{display:flex;align-items:center;gap:8px;
+  padding:4px 14px;border-radius:20px;font-size:0.75rem;font-weight:600;
+  background:rgba(29,158,117,0.12);color:var(--teal);border:1px solid rgba(29,158,117,0.25)}
+.floor-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--teal);
+  animation:pulse-dot 2s ease infinite}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.3}}
+.topbar-controls{display:flex;align-items:center;gap:16px}
+.topbar-controls label{font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:6px}
+.topbar-controls input[type=range]{width:100px;accent-color:var(--teal);cursor:pointer}
+.mute-btn{background:var(--glass);border:1px solid var(--glass-border);color:var(--muted);
+  padding:4px 10px;border-radius:8px;font-family:var(--font);font-size:0.7rem;cursor:pointer;
+  transition:all 0.2s}
+.mute-btn:hover{background:var(--glass-hover);border-color:var(--glass-border-hover);color:var(--text)}
+.mute-btn.active{color:var(--alert);border-color:rgba(255,68,68,0.3)}
+.sim-toggle{display:flex;align-items:center;gap:6px}
+.sim-toggle input{accent-color:var(--amber)}
+.sim-label{font-size:0.65rem;color:var(--amber);font-weight:700;display:none}
+.sim-label.visible{display:inline}
 
-        html { scroll-behavior: smooth; }
+/* ── Layout ────────────────────────────────────────── */
+.container{max-width:1100px;margin:0 auto;padding:16px 20px 40px}
+.section-gap{margin-bottom:20px}
 
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: var(--mono);
-            font-size: 14px;
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
+/* ── Floor Map (SVG) ───────────────────────────────── */
+.floor-map{background:var(--surface);border:1px solid var(--border);border-radius:16px;
+  padding:16px;position:relative;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+.floor-map svg{width:100%;height:auto}
 
-        /* ── Subtle background texture ── */
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background:
-                radial-gradient(ellipse at 20% 0%, rgba(0, 212, 255, 0.03) 0%, transparent 60%),
-                radial-gradient(ellipse at 80% 100%, rgba(0, 255, 136, 0.02) 0%, transparent 60%);
-            pointer-events: none;
-            z-index: 0;
-        }
+/* ── Node Cards ────────────────────────────────────── */
+.node-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:20px;position:relative;overflow:hidden;transition:all 0.3s;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+.node-card:hover{background:var(--glass-hover);border-color:var(--glass-border-hover);
+  transform:translateY(-4px)}
+.node-card.motion{border-color:rgba(255,68,68,0.4);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 30px rgba(255,68,68,0.08)}
+.node-card .offline-overlay{position:absolute;inset:0;background:rgba(255,30,30,0.12);
+  display:none;align-items:center;justify-content:center;border-radius:16px;
+  font-weight:700;font-size:1rem;color:var(--alert);letter-spacing:0.1em;z-index:5;
+  backdrop-filter:blur(4px)}
+.node-card.offline .offline-overlay{display:flex}
+.node-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
+.node-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+.node-name{font-weight:600;font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase}
+.node-status{margin-left:auto;font-size:0.65rem;padding:2px 8px;border-radius:6px;
+  font-weight:700;letter-spacing:0.08em}
+.node-status.idle{background:rgba(107,122,153,0.15);color:var(--muted)}
+.node-status.motion{background:rgba(255,68,68,0.15);color:var(--alert);animation:status-blink 0.8s ease infinite}
+@keyframes status-blink{0%,100%{opacity:1}50%{opacity:0.5}}
+.gauge-wrap{display:flex;justify-content:center;margin-bottom:12px}
+.gauge-wrap svg{width:120px;height:120px}
+.gauge-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:8}
+.gauge-fill{fill:none;stroke-width:8;stroke-linecap:round;
+  transition:stroke-dashoffset 0.6s cubic-bezier(0.16,1,0.3,1)}
+.gauge-text{font-family:var(--font);font-size:18px;font-weight:700;fill:var(--text);text-anchor:middle}
+.gauge-label{font-family:var(--font);font-size:9px;fill:var(--muted);text-anchor:middle}
+.node-metrics{display:flex;justify-content:space-between;font-size:0.7rem}
+.metric-item{text-align:center}
+.metric-value{font-weight:600;color:var(--text)}
+.metric-label{color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em}
+.router-note{text-align:center;font-size:0.65rem;color:var(--muted);padding:8px 0;
+  border-top:1px solid var(--border);margin-top:4px}
 
-        .app {
-            position: relative;
-            z-index: 1;
-            max-width: 720px;
-            margin: 0 auto;
-            padding: 1.5rem 1.25rem 2rem;
-        }
+/* ── Fused Result ──────────────────────────────────── */
+.fused-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:24px;position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);transition:all 0.4s}
+.fused-card.alert{border-color:rgba(255,68,68,0.5);
+  animation:fused-pulse 1.5s ease infinite}
+@keyframes fused-pulse{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 20px rgba(255,68,68,0.05)}
+  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 40px rgba(255,68,68,0.15)}}
+.fused-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.fused-title{font-weight:700;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase}
+.fused-source{font-size:0.7rem;color:var(--muted)}
+.fused-source span{color:var(--teal);font-weight:600}
+.conf-bar-wrap{position:relative;height:28px;background:rgba(255,255,255,0.04);
+  border-radius:14px;overflow:hidden;margin-bottom:10px}
+.conf-bar-fill{height:100%;border-radius:14px;
+  transition:width 0.6s cubic-bezier(0.16,1,0.3,1);position:relative}
+.conf-bar-fill.low{background:linear-gradient(90deg,rgba(29,158,117,0.5),rgba(29,158,117,0.8))}
+.conf-bar-fill.mid{background:linear-gradient(90deg,rgba(186,117,23,0.5),rgba(186,117,23,0.9))}
+.conf-bar-fill.high{background:linear-gradient(90deg,rgba(255,68,68,0.5),rgba(255,68,68,0.9))}
+.conf-bar-label{position:absolute;right:10px;top:50%;transform:translateY(-50%);
+  font-size:0.75rem;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)}
+.conf-tiers{display:flex;justify-content:space-between;font-size:0.6rem;color:var(--muted)}
+.conf-tiers span{padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.03)}
+/* Ripple behind bar on motion */
+.fused-ripple{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 0.4s}
+.fused-card.alert .fused-ripple{opacity:1}
+.fused-ripple::before,.fused-ripple::after{content:'';position:absolute;
+  border-radius:50%;border:1px solid rgba(255,68,68,0.15);
+  animation:ripple-expand 2.5s ease-out infinite}
+.fused-ripple::before{width:200px;height:200px;top:50%;left:50%;
+  transform:translate(-50%,-50%)}
+.fused-ripple::after{width:300px;height:300px;top:50%;left:50%;
+  transform:translate(-50%,-50%);animation-delay:0.8s}
+@keyframes ripple-expand{0%{transform:translate(-50%,-50%) scale(0.3);opacity:1}
+  100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
 
-        /* ── Top bar ── */
-        .topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 2rem;
-        }
+/* ── Chart ─────────────────────────────────────────── */
+.chart-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+.chart-card canvas{width:100%!important;height:220px!important}
+.chart-title{font-size:0.75rem;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:12px}
 
-        .brand {
-            font-family: var(--display);
-            font-weight: 800;
-            font-size: 1.4rem;
-            color: #fff;
-            letter-spacing: -0.02em;
-        }
-        .brand span { color: var(--cyan); }
+/* ── Event Log ─────────────────────────────────────── */
+.log-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+.log-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.log-title{font-size:0.75rem;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--muted)}
+.log-actions{display:flex;gap:8px}
+.log-actions button{background:var(--glass);border:1px solid var(--glass-border);
+  color:var(--muted);padding:3px 10px;border-radius:6px;font-family:var(--font);
+  font-size:0.65rem;cursor:pointer;transition:all 0.2s}
+.log-actions button:hover{background:var(--glass-hover);color:var(--text);
+  border-color:var(--glass-border-hover)}
+.log-list{max-height:160px;overflow-y:auto;font-size:0.68rem;line-height:1.8}
+.log-list::-webkit-scrollbar{width:4px}
+.log-list::-webkit-scrollbar-track{background:transparent}
+.log-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+.log-entry{padding:2px 0;border-bottom:1px solid var(--border);color:var(--muted)}
+.log-entry .tag-motion{color:var(--alert);font-weight:700}
+.log-entry .tag-idle{color:var(--teal);font-weight:600}
+.log-entry .conf{color:var(--amber)}
 
-        .top-actions {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-        }
+/* ── Offline banner ────────────────────────────────── */
+.offline-banner{position:fixed;top:60px;left:50%;transform:translateX(-50%);
+  background:rgba(255,68,68,0.15);border:1px solid rgba(255,68,68,0.3);
+  color:var(--alert);padding:8px 20px;border-radius:10px;font-size:0.75rem;
+  font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px)}
+.offline-banner.visible{display:block;animation:slide-down 0.3s ease}
+@keyframes slide-down{from{opacity:0;transform:translateX(-50%) translateY(-10px)}
+  to{opacity:1;transform:translateX(-50%) translateY(0)}}
 
-        .chip {
-            padding: 0.3rem 0.75rem;
-            border-radius: 100px;
-            font-family: var(--mono);
-            font-size: 0.65rem;
-            font-weight: 700;
-            letter-spacing: 0.05em;
-            cursor: pointer;
-            border: 1px solid var(--border);
-            background: var(--surface);
-            color: var(--text-dim);
-            transition: all 0.2s;
-        }
-        .chip:hover { border-color: var(--border-hover); color: var(--text); }
-        .chip:active { transform: scale(0.96); }
-        .chip.active {
-            border-color: var(--green-border);
-            color: var(--green);
-            background: var(--green-bg);
-        }
-        .chip.active::before { content: '● '; }
-
-        .icon-btn {
-            width: 34px; height: 34px;
-            border-radius: 10px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 1rem;
-            transition: all 0.2s;
-        }
-        .icon-btn:hover { border-color: var(--border-hover); color: var(--text); }
-
-        /* ── Detection Hero ── */
-        .hero {
-            text-align: center;
-            padding: 0.5rem 0 1.5rem;
-        }
-
-        /* Wave canvas */
-        .wave-stage {
-            position: relative;
-            width: 100%;
-            max-width: 500px;
-            height: 360px;
-            margin: 0 auto 1rem;
-            overflow: hidden;
-            border-radius: 20px;
-            background: rgba(10, 14, 20, 0.6);
-            border: 1px solid var(--border);
-        }
-        #wave-canvas {
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-        }
-        .wave-label {
-            position: absolute;
-            font-size: 0.6rem;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: var(--text-dim);
-            z-index: 2;
-            display: flex;
-            align-items: center;
-            gap: 0.3rem;
-        }
-        .wave-label-router {
-            top: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        .wave-label-sensor {
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-        }
-        .wave-label .icon {
-            font-size: 1rem;
-        }
-        .wave-label .rssi-live {
-            color: var(--cyan);
-            font-weight: 700;
-        }
-        .wave-person-wrap {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 2;
-            pointer-events: none;
-        }
-
-        .detection-zone {
-            position: relative;
-            width: 100px;
-            height: 140px;
-        }
-
-        /* Animated pulse rings */
-        .pulse-ring {
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            border: 2px solid var(--green);
-            opacity: 0;
-            animation: none;
-        }
-        .detecting .pulse-ring {
-            animation: ring-pulse 2.5s ease-out infinite;
-        }
-        .pulse-ring:nth-child(2) { animation-delay: 0.6s; }
-        .pulse-ring:nth-child(3) { animation-delay: 1.2s; }
-
-        @keyframes ring-pulse {
-            0% { transform: scale(0.6); opacity: 0.5; }
-            100% { transform: scale(1.6); opacity: 0; }
-        }
-
-        /* Person icon */
-        .person-icon {
-            position: absolute;
-            top: 50%; left: 50%;
-            transform: translate(-50%, -50%);
-            width: 80px; height: 120px;
-        }
-        .person-icon svg {
-            width: 100%; height: 100%;
-            transition: all 0.4s;
-        }
-        .person-icon .body-fill {
-            fill: var(--text-muted);
-            transition: fill 0.4s;
-        }
-        .detecting .person-icon .body-fill {
-            fill: var(--green);
-            filter: drop-shadow(0 0 20px rgba(0, 255, 136, 0.4));
-        }
-
-        /* Status background glow */
-        .detection-zone::after {
-            content: '';
-            position: absolute;
-            inset: -20px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(0,255,136,0.06) 0%, transparent 70%);
-            opacity: 0;
-            transition: opacity 0.4s;
-        }
-        .detecting .detection-zone::after { opacity: 1; }
-
-        .status-text {
-            font-family: var(--display);
-            font-weight: 800;
-            font-size: 1.8rem;
-            letter-spacing: -0.02em;
-            margin-bottom: 0.3rem;
-            transition: color 0.3s;
-        }
-        .status-text.present { color: var(--green); }
-        .status-text.absent { color: var(--text-muted); }
-
-        .status-sub {
-            font-size: 0.75rem;
-            color: var(--text-dim);
-        }
-        .status-sub .source-tag {
-            display: inline-block;
-            padding: 0.15rem 0.5rem;
-            border-radius: 4px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            font-size: 0.65rem;
-            margin-left: 0.3rem;
-        }
-
-        /* ── Confidence bar ── */
-        .conf-section {
-            margin-bottom: 1.75rem;
-        }
-        .conf-header {
-            display: flex;
-            justify-content: space-between;
-            font-size: 0.7rem;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin-bottom: 0.5rem;
-        }
-        .conf-val { color: var(--cyan); font-weight: 700; }
-        .conf-track {
-            height: 8px;
-            background: var(--surface);
-            border-radius: 100px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-        .conf-fill {
-            height: 100%;
-            border-radius: 100px;
-            background: linear-gradient(90deg, var(--cyan), var(--green));
-            transition: width 0.5s ease;
-            box-shadow: 0 0 12px rgba(0, 255, 136, 0.3);
-        }
-
-        /* ── Node cards ── */
-        .nodes {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.75rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .node-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem;
-            transition: all 0.2s;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-        .node-card:hover { border-color: var(--border-hover); transform: translateY(-2px); }
-
-        .node-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.75rem;
-        }
-        .node-name {
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: var(--text-dim);
-        }
-        .node-status {
-            font-size: 0.6rem;
-            padding: 0.15rem 0.45rem;
-            border-radius: 100px;
-            font-weight: 700;
-        }
-        .node-status.online {
-            background: var(--green-bg);
-            color: var(--green);
-            border: 1px solid var(--green-border);
-        }
-        .node-status.offline {
-            background: var(--red-bg);
-            color: var(--red);
-            border: 1px solid rgba(255,68,68,0.25);
-        }
-        .node-signal {
-            font-size: 2rem;
-            font-weight: 700;
-            color: #fff;
-            font-family: var(--display);
-            line-height: 1;
-        }
-        .node-signal .unit {
-            font-size: 0.85rem;
-            color: var(--text-dim);
-            font-weight: 400;
-        }
-        .node-zscore {
-            font-size: 0.75rem;
-            color: var(--text-dim);
-            margin-top: 0.3rem;
-        }
-        .node-zscore .val { color: var(--cyan); font-weight: 700; }
-        .node-mini-bar {
-            height: 4px;
-            background: rgba(255,255,255,0.04);
-            border-radius: 2px;
-            margin-top: 0.6rem;
-            overflow: hidden;
-        }
-        .node-mini-fill {
-            height: 100%;
-            border-radius: 2px;
-            transition: width 0.5s, background 0.3s;
-        }
-
-        /* ── Metrics grid ── */
-        .metrics {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 0.6rem;
-            margin-bottom: 1.5rem;
-        }
-
-        .metric {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 0.75rem;
-            text-align: center;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-        .metric-label {
-            font-size: 0.55rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-muted);
-            margin-bottom: 0.3rem;
-        }
-        .metric-value {
-            font-size: 1.1rem;
-            font-weight: 700;
-            color: var(--cyan);
-        }
-
-        /* ── Sparkline chart ── */
-        .chart-section {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-        .chart-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 0.5rem;
-        }
-        .chart-title {
-            font-size: 0.65rem;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--text-dim);
-        }
-        .chart-legend {
-            display: flex;
-            gap: 0.75rem;
-            font-size: 0.6rem;
-            color: var(--text-dim);
-        }
-        .legend-dot {
-            display: inline-block;
-            width: 6px; height: 6px;
-            border-radius: 50%;
-            margin-right: 3px;
-            vertical-align: middle;
-        }
-        #sparkline {
-            width: 100%;
-            height: 80px;
-            display: block;
-        }
-
-        /* ── Event log ── */
-        .log-section {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-        .log-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 0.6rem;
-        }
-        .log-scroll {
-            max-height: 150px;
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-            gap: 3px;
-        }
-        .log-entry {
-            font-size: 0.7rem;
-            padding: 0.3rem 0.5rem;
-            border-radius: 6px;
-            background: rgba(255,255,255,0.02);
-            color: var(--text-dim);
-            border-left: 3px solid transparent;
-        }
-        .log-entry.motion {
-            border-left-color: var(--red);
-            color: var(--red);
-            background: var(--red-bg);
-        }
-        .log-entry.info {
-            border-left-color: var(--green);
-            color: var(--green);
-            background: var(--green-bg);
-        }
-        .log-empty {
-            text-align: center;
-            padding: 1rem;
-            color: var(--text-muted);
-            font-size: 0.75rem;
-        }
-
-        .log-actions {
-            display: flex;
-            gap: 0.5rem;
-            margin-top: 0.6rem;
-        }
-        .log-actions .chip { flex: 1; text-align: center; font-size: 0.6rem; }
-
-        /* ── Settings panel ── */
-        .settings-panel {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            display: none;
-            box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
-        }
-        .settings-panel.open { display: block; }
-
-        .setting-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-        }
-        .setting-row:last-child { border-bottom: none; }
-        .setting-label { font-size: 0.75rem; color: var(--text-dim); }
-        .setting-value { font-size: 0.75rem; color: var(--cyan); font-weight: 700; }
-
-        .setting-row input[type=range] {
-            width: 120px;
-            accent-color: var(--cyan);
-        }
-        .toggle-pill {
-            padding: 0.2rem 0.6rem;
-            border-radius: 100px;
-            font-size: 0.65rem;
-            font-weight: 700;
-            cursor: pointer;
-            border: 1px solid var(--border);
-            background: var(--bg);
-            color: var(--text-dim);
-            font-family: var(--mono);
-            transition: all 0.2s;
-        }
-        .toggle-pill.on {
-            border-color: var(--green-border);
-            color: var(--green);
-            background: var(--green-bg);
-        }
-
-        /* ── Offline banner ── */
-        .offline-banner {
-            position: fixed;
-            top: 1rem; left: 50%;
-            transform: translateX(-50%);
-            padding: 0.6rem 1.5rem;
-            border-radius: 12px;
-            background: var(--red-bg);
-            border: 1px solid rgba(255,68,68,0.3);
-            color: var(--red);
-            font-size: 0.8rem;
-            font-weight: 700;
-            z-index: 100;
-            display: none;
-            backdrop-filter: blur(12px);
-        }
-
-        /* ── Motion flash border ── */
-        .motion-flash {
-            position: fixed;
-            inset: 0;
-            border: 3px solid var(--green);
-            pointer-events: none;
-            opacity: 0;
-            transition: opacity 0.15s;
-            z-index: 50;
-            border-radius: 0;
-        }
-        .motion-flash.active { opacity: 1; }
-        .motion-flash.amber { border-color: var(--amber); }
-
-        /* ── Footer ── */
-        .footer {
-            text-align: center;
-            font-size: 0.6rem;
-            color: var(--text-muted);
-            padding: 0.5rem 0 1rem;
-        }
-        .footer kbd {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            padding: 1px 5px;
-            border-radius: 3px;
-            font-family: var(--mono);
-            margin: 0 2px;
-        }
-
-        /* ── Scrollbar ── */
-        ::-webkit-scrollbar { width: 4px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
-
-        /* ── Responsive ── */
-        @media (max-width: 500px) {
-            .metrics { grid-template-columns: repeat(2, 1fr); }
-            .wave-stage { height: 280px; }
-            .detection-zone { width: 80px; height: 110px; }
-            .status-text { font-size: 1.4rem; }
-            .node-signal { font-size: 1.6rem; }
-        }
-    </style>
+/* ── Responsive ────────────────────────────────────── */
+@media(max-width:768px){
+  .topbar{flex-wrap:wrap;gap:8px;padding:10px 14px}
+  .topbar-title{font-size:0.72rem;order:1;width:100%;text-align:center}
+  .floor-badge{order:2}
+  .topbar-controls{order:3;flex-wrap:wrap;justify-content:center}
+  .node-grid{grid-template-columns:1fr}
+  .container{padding:12px}
+}
+</style>
 </head>
 <body>
 
-<div class="offline-banner" id="offline">⚠ SERVER OFFLINE — RECONNECTING…</div>
-<div class="motion-flash" id="flash"></div>
+<!-- ── OFFLINE BANNER ──────────────────────────────── -->
+<div class="offline-banner" id="offlineBanner">⚠ SERVER UNREACHABLE — RETRYING…</div>
 
-<main class="app">
+<!-- ── TOP BAR ─────────────────────────────────────── -->
+<nav class="topbar">
+  <div class="topbar-title">[ HUMAN <span>WIFI</span> DETECTOR — 2 FLOOR ]</div>
+  <div class="floor-badge"><div class="dot"></div><span id="floorBadge">1ST FLOOR MESH: 0/3 ACTIVE</span></div>
+  <div class="topbar-controls">
+    <label>THR <span id="thrVal">2.0</span>
+      <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
+    </label>
+    <button class="mute-btn" id="muteBtn" title="Toggle sound">🔊</button>
+    <div class="sim-toggle">
+      <label><input type="checkbox" id="simToggle"> SIM</label>
+      <span class="sim-label" id="simLabel">[SIM]</span>
+    </div>
+  </div>
+</nav>
 
-    <!-- Top bar -->
-    <nav class="topbar">
-        <div class="brand"><span>π</span> HumanSense</div>
-        <div class="top-actions">
-            <button class="chip" id="btn-sim">SIM</button>
-            <button class="icon-btn" id="btn-mute" aria-label="Toggle audio">🔔</button>
-            <button class="icon-btn" id="btn-settings" aria-label="Settings">⚙</button>
-        </div>
-    </nav>
+<main class="container">
 
-    <!-- Settings -->
-    <section class="settings-panel" id="settings-panel">
-        <div class="setting-row">
-            <span class="setting-label">Z-Score Threshold</span>
-            <span><span class="setting-value" id="thresh-display">2.0σ</span>
-            <input type="range" id="thresh-slider" min="1.0" max="4.0" step="0.1" value="2.0"></span>
-        </div>
-        <div class="setting-row">
-            <span class="setting-label">Audio Alert</span>
-            <button class="toggle-pill on" id="toggle-audio">ON</button>
-        </div>
-        <div class="setting-row">
-            <span class="setting-label">Simulation Mode</span>
-            <button class="toggle-pill" id="toggle-sim">OFF</button>
-        </div>
-    </section>
+  <!-- ── FLOOR MAP ───────────────────────────────────── -->
+  <section class="floor-map section-gap">
+    <svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
+      <!-- Ground Floor -->
+      <rect x="40" y="120" width="720" height="65" rx="8" fill="rgba(255,255,255,0.02)"
+            stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+      <text x="400" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="9" fill="#6b7a99" letter-spacing="0.08em">GROUND FLOOR</text>
+      <!-- Router icon -->
+      <circle cx="400" cy="160" r="8" fill="rgba(107,122,153,0.2)" stroke="#6b7a99" stroke-width="1"/>
+      <text x="400" y="163" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="7" fill="#6b7a99">R</text>
+      <text x="400" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="7" fill="#4a5568">Router — reference only</text>
 
-    <!-- Detection hero -->
-    <section class="hero" id="hero">
-        <!-- WiFi Wave Propagation Visualization -->
-        <div class="wave-stage">
-            <canvas id="wave-canvas"></canvas>
-            <div class="wave-label wave-label-router">
-                <span class="icon">📡</span>
-                <span>Router</span>
-                <span class="rssi-live" id="wave-rssi">--% RSSI</span>
-            </div>
-            <div class="wave-person-wrap" id="detection-zone">
-                <div class="detection-zone">
-                    <div class="person-icon">
-                        <svg viewBox="0 0 80 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle class="body-fill" cx="40" cy="18" r="14" />
-                            <path class="body-fill" d="M24 40 C24 36 32 32 40 32 C48 32 56 36 56 40 L56 72 C56 76 52 80 48 80 L32 80 C28 80 24 76 24 72 Z"/>
-                            <path class="body-fill" d="M24 42 L10 62 C8 65 10 68 13 67 L24 56 Z"/>
-                            <path class="body-fill" d="M56 42 L70 62 C72 65 70 68 67 67 L56 56 Z"/>
-                            <path class="body-fill" d="M28 78 L24 112 C23 116 28 117 30 114 L36 80 Z"/>
-                            <path class="body-fill" d="M52 78 L56 112 C57 116 52 117 50 114 L44 80 Z"/>
-                        </svg>
-                    </div>
-                </div>
-            </div>
-            <div class="wave-label wave-label-sensor">
-                <span class="icon">💻</span>
-                <span>Sensor</span>
-                <span class="rssi-live" id="wave-zscore">Z: 0.00</span>
-            </div>
-        </div>
-        <div class="status-text absent" id="status-text">NO PRESENCE</div>
-        <div class="status-sub" id="status-sub">WiFi waves propagating normally<span class="source-tag" id="source-tag">—</span></div>
-    </section>
+      <!-- First Floor -->
+      <rect x="40" y="10" width="720" height="100" rx="8" fill="rgba(29,158,117,0.04)"
+            stroke="rgba(29,158,117,0.15)" stroke-width="1"/>
+      <text x="400" y="28" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="9" fill="rgba(29,158,117,0.6)" letter-spacing="0.08em">1ST FLOOR — SENSING MESH</text>
 
-    <!-- Confidence bar -->
-    <section class="conf-section">
-        <div class="conf-header">
-            <span>Detection Confidence</span>
-            <span class="conf-val" id="conf-val">0%</span>
-        </div>
-        <div class="conf-track">
-            <div class="conf-fill" id="conf-fill" style="width: 0%"></div>
-        </div>
-    </section>
+      <!-- Links between nodes (dashed lines) -->
+      <line id="link-ext-lap" x1="160" y1="70" x2="400" y2="70"
+            stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="4,4"/>
+      <line id="link-lap-pho" x1="400" y1="70" x2="640" y2="70"
+            stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="4,4"/>
+      <line id="link-ext-pho" x1="160" y1="70" x2="640" y2="70"
+            stroke="rgba(255,255,255,0.04)" stroke-width="1" stroke-dasharray="6,6"/>
 
-    <!-- Node cards -->
-    <section class="nodes">
-        <div class="node-card" id="node-laptop">
-            <div class="node-header">
-                <span class="node-name">💻 Laptop</span>
-                <span class="node-status online" id="laptop-status">ONLINE</span>
-            </div>
-            <div class="node-signal"><span id="laptop-signal">--</span><span class="unit">%</span></div>
-            <div class="node-zscore">Z-Score: <span class="val" id="laptop-zscore">0.00</span></div>
-            <div class="node-mini-bar"><div class="node-mini-fill" id="laptop-bar" style="width:0%; background: var(--cyan)"></div></div>
-        </div>
-        <div class="node-card" id="node-phone">
-            <div class="node-header">
-                <span class="node-name">📱 Phone</span>
-                <span class="node-status offline" id="phone-status">OFFLINE</span>
-            </div>
-            <div class="node-signal"><span id="phone-signal">--</span><span class="unit">%</span></div>
-            <div class="node-zscore">Z-Score: <span class="val" id="phone-zscore">0.00</span></div>
-            <div class="node-mini-bar"><div class="node-mini-fill" id="phone-bar" style="width:0%; background: var(--amber)"></div></div>
-        </div>
-    </section>
+      <!-- Vertical link from router to laptop (dim) -->
+      <line x1="400" y1="120" x2="400" y2="82" stroke="rgba(107,122,153,0.1)"
+            stroke-width="1" stroke-dasharray="3,5"/>
 
-    <!-- Metrics -->
-    <section class="metrics">
-        <div class="metric">
-            <div class="metric-label">RSSI</div>
-            <div class="metric-value" id="m-rssi">--%</div>
-        </div>
-        <div class="metric">
-            <div class="metric-label">Variance</div>
-            <div class="metric-value" id="m-var">0.00</div>
-        </div>
-        <div class="metric">
-            <div class="metric-label">Heart Rate</div>
-            <div class="metric-value" id="m-hr">-- <small style="font-size:0.6rem;color:var(--text-dim)">BPM</small></div>
-        </div>
-        <div class="metric">
-            <div class="metric-label">Breathing</div>
-            <div class="metric-value" id="m-breath">-- <small style="font-size:0.6rem;color:var(--text-dim)">RPM</small></div>
-        </div>
-    </section>
+      <!-- Extender node -->
+      <circle id="map-ext" cx="160" cy="70" r="12" fill="rgba(29,158,117,0.15)"
+              stroke="var(--teal)" stroke-width="1.5"/>
+      <text x="160" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="8" fill="var(--teal)" font-weight="600">E</text>
+      <text x="160" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="7" fill="rgba(29,158,117,0.6)">Extender</text>
 
-    <!-- Signal chart -->
-    <section class="chart-section">
-        <div class="chart-header">
-            <span class="chart-title">Signal History (60s)</span>
-            <div class="chart-legend">
-                <span><span class="legend-dot" style="background:var(--cyan)"></span>Laptop</span>
-                <span><span class="legend-dot" style="background:var(--amber)"></span>Phone</span>
-            </div>
-        </div>
-        <canvas id="sparkline"></canvas>
-    </section>
+      <!-- Laptop node -->
+      <circle id="map-lap" cx="400" cy="70" r="12" fill="rgba(55,138,221,0.15)"
+              stroke="var(--blue)" stroke-width="1.5"/>
+      <text x="400" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="8" fill="var(--blue)" font-weight="600">L</text>
+      <text x="400" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="7" fill="rgba(55,138,221,0.6)">Laptop</text>
 
-    <!-- Event log -->
-    <section class="log-section">
-        <div class="log-header">
-            <span class="chart-title">Event Log</span>
-            <span class="chart-title" id="event-count">0 events</span>
-        </div>
-        <div class="log-scroll" id="log-scroll">
-            <div class="log-empty">No events yet — waiting for motion…</div>
-        </div>
-        <div class="log-actions">
-            <button class="chip" id="btn-clear">CLEAR</button>
-            <button class="chip" id="btn-export">EXPORT CSV</button>
-        </div>
-    </section>
+      <!-- Phone node -->
+      <circle id="map-pho" cx="640" cy="70" r="12" fill="rgba(186,117,23,0.15)"
+              stroke="var(--amber)" stroke-width="1.5"/>
+      <text x="640" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="8" fill="var(--amber)" font-weight="600">P</text>
+      <text x="640" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
+            font-size="7" fill="rgba(186,117,23,0.6)">Phone</text>
 
-    <!-- Footer -->
-    <footer class="footer">
-        <kbd>S</kbd> Settings &nbsp; <kbd>M</kbd> Mute &nbsp; <kbd>Space</kbd> Sim &nbsp; <kbd>L</kbd> Log
-    </footer>
+      <!-- Pulse rings for motion detection (hidden by default) -->
+      <circle id="pulse-ext" cx="160" cy="70" r="20" fill="none"
+              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
+      <circle id="pulse-lap" cx="400" cy="70" r="20" fill="none"
+              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
+      <circle id="pulse-pho" cx="640" cy="70" r="20" fill="none"
+              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
+    </svg>
+  </section>
+
+  <!-- ── NODE CARDS ──────────────────────────────────── -->
+  <section class="node-grid section-gap">
+    <!-- Extender -->
+    <article class="node-card" id="card-extender">
+      <div class="offline-overlay">OFFLINE</div>
+      <div class="node-header">
+        <div class="node-dot" style="background:var(--teal)"></div>
+        <div class="node-name" style="color:var(--teal)">Extender</div>
+        <div class="node-status idle" id="status-extender">IDLE</div>
+      </div>
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 120 120">
+          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
+          <circle class="gauge-fill" id="gauge-extender" cx="60" cy="60" r="48"
+                  stroke="var(--teal)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
+                  transform="rotate(-90 60 60)"/>
+          <text class="gauge-text" x="60" y="58" id="gaugeText-extender">0%</text>
+          <text class="gauge-label" x="60" y="74">SIGNAL</text>
+        </svg>
+      </div>
+      <div class="node-metrics">
+        <div class="metric-item"><div class="metric-value" id="sig-extender">0</div><div class="metric-label">Signal</div></div>
+        <div class="metric-item"><div class="metric-value" id="z-extender">0.00</div><div class="metric-label">Z-Score</div></div>
+        <div class="metric-item"><div class="metric-value" id="last-extender">—</div><div class="metric-label">Last Seen</div></div>
+      </div>
+    </article>
+
+    <!-- Laptop -->
+    <article class="node-card" id="card-laptop">
+      <div class="offline-overlay">OFFLINE</div>
+      <div class="node-header">
+        <div class="node-dot" style="background:var(--blue)"></div>
+        <div class="node-name" style="color:var(--blue)">Laptop</div>
+        <div class="node-status idle" id="status-laptop">IDLE</div>
+      </div>
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 120 120">
+          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
+          <circle class="gauge-fill" id="gauge-laptop" cx="60" cy="60" r="48"
+                  stroke="var(--blue)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
+                  transform="rotate(-90 60 60)"/>
+          <text class="gauge-text" x="60" y="58" id="gaugeText-laptop">0%</text>
+          <text class="gauge-label" x="60" y="74">SIGNAL</text>
+        </svg>
+      </div>
+      <div class="node-metrics">
+        <div class="metric-item"><div class="metric-value" id="sig-laptop">0</div><div class="metric-label">Signal</div></div>
+        <div class="metric-item"><div class="metric-value" id="z-laptop">0.00</div><div class="metric-label">Z-Score</div></div>
+        <div class="metric-item"><div class="metric-value" id="last-laptop">—</div><div class="metric-label">Last Seen</div></div>
+      </div>
+    </article>
+
+    <!-- Phone -->
+    <article class="node-card" id="card-phone">
+      <div class="offline-overlay">OFFLINE</div>
+      <div class="node-header">
+        <div class="node-dot" style="background:var(--amber)"></div>
+        <div class="node-name" style="color:var(--amber)">Phone</div>
+        <div class="node-status idle" id="status-phone">IDLE</div>
+      </div>
+      <div class="gauge-wrap">
+        <svg viewBox="0 0 120 120">
+          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
+          <circle class="gauge-fill" id="gauge-phone" cx="60" cy="60" r="48"
+                  stroke="var(--amber)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
+                  transform="rotate(-90 60 60)"/>
+          <text class="gauge-text" x="60" y="58" id="gaugeText-phone">0%</text>
+          <text class="gauge-label" x="60" y="74">SIGNAL</text>
+        </svg>
+      </div>
+      <div class="node-metrics">
+        <div class="metric-item"><div class="metric-value" id="sig-phone">0</div><div class="metric-label">Signal</div></div>
+        <div class="metric-item"><div class="metric-value" id="z-phone">0.00</div><div class="metric-label">Z-Score</div></div>
+        <div class="metric-item"><div class="metric-value" id="last-phone">—</div><div class="metric-label">Last Seen</div></div>
+      </div>
+    </article>
+  </section>
+
+  <div class="router-note">Router (ground floor) used as reference only — excluded from motion scoring.</div>
+
+  <!-- ── FUSED RESULT ────────────────────────────────── -->
+  <section class="fused-card section-gap" id="fusedCard" style="margin-top:16px">
+    <div class="fused-ripple"></div>
+    <div class="fused-header">
+      <div class="fused-title">Fused Detection</div>
+      <div class="fused-source">Source: <span id="fusedSource">none</span></div>
+    </div>
+    <div class="conf-bar-wrap">
+      <div class="conf-bar-fill low" id="confBar" style="width:0%">
+        <span class="conf-bar-label" id="confLabel">0%</span>
+      </div>
+    </div>
+    <div class="conf-tiers">
+      <span>Single node (0.33)</span>
+      <span>Two nodes (0.67)</span>
+      <span>All nodes (1.0)</span>
+    </div>
+  </section>
+
+  <!-- ── CHART ───────────────────────────────────────── -->
+  <section class="chart-card section-gap">
+    <div class="chart-title">Signal History — Last 60 Readings</div>
+    <canvas id="signalChart"></canvas>
+  </section>
+
+  <!-- ── EVENT LOG ───────────────────────────────────── -->
+  <section class="log-card">
+    <div class="log-header">
+      <div class="log-title">Event Log</div>
+      <div class="log-actions">
+        <button id="clearLog">CLEAR</button>
+        <button id="exportCsv">EXPORT CSV</button>
+      </div>
+    </div>
+    <div class="log-list" id="logList"></div>
+  </section>
 
 </main>
 
 <script>
-// ═══════════════════════════════════════════════════
-// AUDIO
-// ═══════════════════════════════════════════════════
-let audioCtx;
-let beepOn = localStorage.getItem('beep') !== 'false';
+// ═══════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════
+const CIRC = 2 * Math.PI * 48; // gauge circumference
+const MAX_HISTORY = 60;
+const NODE_KEYS = ['extender', 'laptop', 'phone'];
+const NODE_COLORS = { extender: '#1D9E75', laptop: '#378ADD', phone: '#BA7517' };
 
-function playBeep(freq = 440) {
-    if (!beepOn) return;
-    if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    const o = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    o.type = 'sine';
-    o.frequency.setValueAtTime(freq, audioCtx.currentTime);
-    g.gain.setValueAtTime(0.06, audioCtx.currentTime);
-    o.connect(g);
-    g.connect(audioCtx.destination);
-    o.start();
-    o.stop(audioCtx.currentTime + 0.12);
+let muted = false;
+let simMode = false;
+let failStrikes = 0;
+let lastMotionState = false;
+let history = { extender: [], laptop: [], phone: [] };
+let motionBands = [];
+let events = [];
+
+// Sim state
+let simTick = 0;
+let simBurstStart = 0;
+let simBursting = false;
+let simWindows = { extender: [], laptop: [], phone: [] };
+let simConsec = { extender: 0, laptop: 0, phone: 0 };
+
+// Audio context
+let audioCtx = null;
+function getAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
 }
 
-// ═══════════════════════════════════════════════════
-// DOM REFS
-// ═══════════════════════════════════════════════════
+function beep(freq, duration = 80) {
+  if (muted) return;
+  try {
+    const ctx = getAudio();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    gain.gain.value = 0.08;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
+    osc.stop(ctx.currentTime + duration / 1000 + 0.05);
+  } catch(e) {}
+}
+
+function tripleBeep() {
+  beep(440, 60);
+  setTimeout(() => beep(440, 60), 100);
+  setTimeout(() => beep(440, 60), 200);
+}
+
+// ═══════════════════════════════════════════════════════
+// DOM REFERENCES
+// ═══════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 
-const dom = {
-    offline:       $('offline'),
-    flash:         $('flash'),
-    hero:          $('hero'),
-    zone:          $('detection-zone'),
-    statusText:    $('status-text'),
-    statusSub:     $('status-sub'),
-    sourceTag:     $('source-tag'),
-    confVal:       $('conf-val'),
-    confFill:      $('conf-fill'),
-    laptopSignal:  $('laptop-signal'),
-    laptopZscore:  $('laptop-zscore'),
-    laptopBar:     $('laptop-bar'),
-    laptopStatus:  $('laptop-status'),
-    phoneSignal:   $('phone-signal'),
-    phoneZscore:   $('phone-zscore'),
-    phoneBar:      $('phone-bar'),
-    phoneStatus:   $('phone-status'),
-    mRssi:         $('m-rssi'),
-    mVar:          $('m-var'),
-    mHr:           $('m-hr'),
-    mBreath:       $('m-breath'),
-    logScroll:     $('log-scroll'),
-    eventCount:    $('event-count'),
-    threshDisplay: $('thresh-display'),
-    threshSlider:  $('thresh-slider'),
-    settingsPanel: $('settings-panel'),
-    btnMute:       $('btn-mute'),
-    btnSim:        $('btn-sim'),
-    btnSettings:   $('btn-settings'),
-    toggleAudio:   $('toggle-audio'),
-    toggleSim:     $('toggle-sim'),
-    waveRssi:      $('wave-rssi'),
-    waveZscore:    $('wave-zscore'),
-};
+const thrSlider = $('thrSlider');
+const thrVal = $('thrVal');
+const muteBtn = $('muteBtn');
+const simToggle = $('simToggle');
+const simLabel = $('simLabel');
+const floorBadge = $('floorBadge');
+const offlineBanner = $('offlineBanner');
+const fusedCard = $('fusedCard');
+const confBar = $('confBar');
+const confLabel = $('confLabel');
+const fusedSource = $('fusedSource');
+const logList = $('logList');
+const clearLogBtn = $('clearLog');
+const exportCsvBtn = $('exportCsv');
 
-// ═══════════════════════════════════════════════════
-// STATE
-// ═══════════════════════════════════════════════════
-let fails = 0;
-let clientSim = false;
-let lastMotionTs = 0;
-let presenceTimer = null;
-let logEntries = [];
-const laptopHist = [];
-const phoneHist = [];
-let firstLog = true;
+// ═══════════════════════════════════════════════════════
+// CONTROLS
+// ═══════════════════════════════════════════════════════
+thrSlider.addEventListener('input', () => {
+  thrVal.textContent = parseFloat(thrSlider.value).toFixed(1);
+  if (!simMode) {
+    fetch(`/set_threshold/${thrSlider.value}`).catch(() => {});
+  }
+});
 
-// Wave animation state (driven by real signal data)
-let waveSignal = 50;     // current RSSI (0–100)
-let waveZscore = 0;      // current Z-score
-let waveMotion = false;  // motion detected
-let wavePresent = false; // person present
+muteBtn.addEventListener('click', () => {
+  muted = !muted;
+  muteBtn.textContent = muted ? '🔇' : '🔊';
+  muteBtn.classList.toggle('active', muted);
+});
 
-// ═══════════════════════════════════════════════════
-// WIFI WAVE PROPAGATION ANIMATION
-// ═══════════════════════════════════════════════════
-const waveCanvas = $('wave-canvas');
-const waveCtx = waveCanvas.getContext('2d');
+simToggle.addEventListener('change', () => {
+  simMode = simToggle.checked;
+  simLabel.classList.toggle('visible', simMode);
+  if (simMode) {
+    simTick = 0;
+    simBurstStart = 0;
+    simBursting = false;
+    simWindows = { extender: [], laptop: [], phone: [] };
+    simConsec = { extender: 0, laptop: 0, phone: 0 };
+  }
+});
 
-function resizeWaveCanvas() {
-    const rect = waveCanvas.parentElement.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio, 2);
-    waveCanvas.width = rect.width * dpr;
-    waveCanvas.height = rect.height * dpr;
-    waveCtx.scale(dpr, dpr);
-    waveCanvas._w = rect.width;
-    waveCanvas._h = rect.height;
-}
-resizeWaveCanvas();
-window.addEventListener('resize', resizeWaveCanvas);
-
-// Wave ring configuration
-const RING_COUNT = 18;
-const RING_SPEED = 0.6; // pixels per frame at 60fps
-const rings = [];
-for (let i = 0; i < RING_COUNT; i++) {
-    rings.push({
-        radius: (i / RING_COUNT) * 500,
-        born: performance.now() - i * 800
-    });
-}
-
-function animateWaves(timestamp) {
-    requestAnimationFrame(animateWaves);
-    const w = waveCanvas._w || 500;
-    const h = waveCanvas._h || 360;
-    waveCtx.clearRect(0, 0, w, h);
-
-    // Router source point (top center)
-    const rx = w / 2;
-    const ry = 35;
-    // Sensor point (bottom center)
-    const sx = w / 2;
-    const sy = h - 35;
-    // Person center
-    const px = w / 2;
-    const py = h / 2;
-
-    const maxRadius = Math.sqrt(w * w + h * h);
-    const signalFactor = waveSignal / 100; // 0–1 signal strength
-    const distortAmt = Math.min(Math.abs(waveZscore), 5); // capped at 5
-    const sec = timestamp * 0.001;
-
-    // Draw concentric wave rings from router
-    for (let i = 0; i < RING_COUNT; i++) {
-        const age = (timestamp - rings[i].born) * 0.001;
-        const r = (age * 80 * RING_SPEED) % maxRadius;
-
-        if (r < 5) {
-            rings[i].born = timestamp;
-            continue;
-        }
-
-        // Base alpha: fades with distance, scales with signal strength
-        const distanceFade = 1 - (r / maxRadius);
-        const alpha = distanceFade * signalFactor * 0.35;
-        if (alpha < 0.01) continue;
-
-        // Color: cyan when normal, shifts amber with motion intensity
-        const motionBlend = waveMotion ? Math.min(distortAmt / 3, 1) : 0;
-        const red = Math.round(0 + motionBlend * 255);
-        const green = Math.round(212 - motionBlend * 42);
-        const blue = Math.round(255 - motionBlend * 255);
-
-        waveCtx.beginPath();
-
-        if (wavePresent && distortAmt > 0.3) {
-            // Draw distorted ring — wave bends around person
-            const segments = 72;
-            for (let s = 0; s <= segments; s++) {
-                const angle = (s / segments) * Math.PI * 2;
-                let dr = r;
-
-                // Distortion near person: waves compress/stretch
-                const ptX = rx + Math.cos(angle) * r;
-                const ptY = ry + Math.sin(angle) * r;
-                const distToPerson = Math.sqrt((ptX - px) ** 2 + (ptY - py) ** 2);
-                const personRadius = 60;
-
-                if (distToPerson < personRadius * 2) {
-                    // Wave distortion: ripple effect near person
-                    const proximity = 1 - (distToPerson / (personRadius * 2));
-                    const ripple = Math.sin(sec * 4 + angle * 3 + i * 0.5) * proximity;
-                    dr += ripple * distortAmt * 12;
-                }
-
-                const x = rx + Math.cos(angle) * dr;
-                const y = ry + Math.sin(angle) * dr;
-                s === 0 ? waveCtx.moveTo(x, y) : waveCtx.lineTo(x, y);
-            }
-            waveCtx.closePath();
-        } else {
-            // Clean concentric circle
-            waveCtx.arc(rx, ry, r, 0, Math.PI * 2);
-        }
-
-        waveCtx.strokeStyle = `rgba(${red}, ${green}, ${blue}, ${alpha})`;
-        waveCtx.lineWidth = 1.5 + (waveMotion ? Math.sin(sec * 3 + i) * 0.5 : 0);
-        waveCtx.stroke();
+// ═══════════════════════════════════════════════════════
+// CHART.JS SETUP
+// ═══════════════════════════════════════════════════════
+const chartCtx = $('signalChart').getContext('2d');
+const chart = new Chart(chartCtx, {
+  type: 'line',
+  data: {
+    labels: Array(MAX_HISTORY).fill(''),
+    datasets: [
+      { label: 'Extender', data: [], borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.08)',
+        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+      { label: 'Laptop', data: [], borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.08)',
+        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+      { label: 'Phone', data: [], borderColor: '#BA7517', backgroundColor: 'rgba(186,117,23,0.08)',
+        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true }
+    ]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 300 },
+    interaction: { mode: 'index', intersect: false },
+    scales: {
+      x: { display: false },
+      y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.04)' },
+           ticks: { color: '#6b7a99', font: { family: 'JetBrains Mono', size: 10 } } }
+    },
+    plugins: {
+      legend: { labels: { color: '#6b7a99', font: { family: 'JetBrains Mono', size: 10 },
+                usePointStyle: true, pointStyle: 'circle' } }
     }
+  }
+});
 
-    // Draw signal attenuation zone behind person (shadow)
-    if (wavePresent) {
-        const shadowAlpha = 0.08 + distortAmt * 0.02;
-        const grad = waveCtx.createRadialGradient(px, py, 20, px, py, 80);
-        grad.addColorStop(0, `rgba(0, 255, 136, ${shadowAlpha})`);
-        grad.addColorStop(1, 'rgba(0, 255, 136, 0)');
-        waveCtx.beginPath();
-        waveCtx.arc(px, py, 80, 0, Math.PI * 2);
-        waveCtx.fillStyle = grad;
-        waveCtx.fill();
-    }
-
-    // Draw router broadcast dot
-    waveCtx.beginPath();
-    waveCtx.arc(rx, ry, 4 + Math.sin(sec * 2) * 1, 0, Math.PI * 2);
-    waveCtx.fillStyle = `rgba(0, 212, 255, ${0.6 + Math.sin(sec * 2) * 0.2})`;
-    waveCtx.fill();
-
-    // Draw sensor receive dot
-    const sensorAlpha = signalFactor * 0.5 + 0.1;
-    waveCtx.beginPath();
-    waveCtx.arc(sx, sy, 4, 0, Math.PI * 2);
-    waveCtx.fillStyle = `rgba(0, 255, 136, ${sensorAlpha})`;
-    waveCtx.fill();
+// ═══════════════════════════════════════════════════════
+// UI UPDATE FUNCTIONS
+// ═══════════════════════════════════════════════════════
+function updateGauge(key, pct) {
+  const offset = CIRC - (CIRC * Math.min(pct, 100) / 100);
+  $(`gauge-${key}`).style.strokeDashoffset = offset;
+  $(`gaugeText-${key}`).textContent = `${Math.round(pct)}%`;
 }
 
-requestAnimationFrame(animateWaves);
+function updateNodeCard(key, data) {
+  const now = Date.now() / 1000;
+  const card = $(`card-${key}`);
+  const statusEl = $(`status-${key}`);
+  const freshness = key === 'laptop' ? true : (now - (data.last_seen || 0)) < 5;
 
-// ═══════════════════════════════════════════════════
-// SPARKLINE CHART
-// ═══════════════════════════════════════════════════
-const sparkCanvas = $('sparkline');
+  // Signal gauge
+  updateGauge(key, data.signal || 0);
+  $(`sig-${key}`).textContent = data.signal || 0;
+  $(`z-${key}`).textContent = (data.zscore || 0).toFixed(2);
 
-function drawChart() {
-    const ctx = sparkCanvas.getContext('2d');
-    const dpr = Math.min(window.devicePixelRatio, 2);
-    const w = sparkCanvas.clientWidth * dpr;
-    const h = sparkCanvas.clientHeight * dpr;
-    sparkCanvas.width = w;
-    sparkCanvas.height = h;
-    ctx.clearRect(0, 0, w, h);
+  // Last seen
+  if (data.last_seen && data.last_seen > 0) {
+    const ago = Math.round(now - data.last_seen);
+    $(`last-${key}`).textContent = ago < 2 ? 'now' : `${ago}s ago`;
+  } else {
+    $(`last-${key}`).textContent = '—';
+  }
 
-    function drawLine(data, color) {
-        if (data.length < 2) return;
-        ctx.beginPath();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2 * dpr;
-        ctx.lineJoin = 'round';
-        for (let i = 0; i < data.length; i++) {
-            const x = (i / (data.length - 1)) * w;
-            const y = h - (data[i] / 100) * h * 0.9 - h * 0.05;
-            i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-        }
-        ctx.stroke();
-    }
-
-    drawLine(laptopHist, '#00d4ff');
-    drawLine(phoneHist, '#ffaa00');
+  // Status
+  card.classList.toggle('offline', !freshness);
+  card.classList.toggle('motion', data.motion && freshness);
+  statusEl.textContent = data.motion ? 'MOTION' : 'IDLE';
+  statusEl.className = 'node-status ' + (data.motion ? 'motion' : 'idle');
 }
 
-// ═══════════════════════════════════════════════════
-// LOGGING
-// ═══════════════════════════════════════════════════
-function addLog(type, text) {
-    if (firstLog) {
-        dom.logScroll.innerHTML = '';
-        firstLog = false;
-    }
-    const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
-    const div = document.createElement('div');
-    div.className = 'log-entry ' + type;
-    div.textContent = `[${ts}] ${text}`;
-    dom.logScroll.prepend(div);
-    logEntries.push({ time: ts, text });
-    if (dom.logScroll.children.length > 50) dom.logScroll.removeChild(dom.logScroll.lastChild);
-    dom.eventCount.textContent = logEntries.length + ' events';
-}
+function updateFloorMap(nodes) {
+  const mapIds = { extender: 'map-ext', laptop: 'map-lap', phone: 'map-pho' };
+  const pulseIds = { extender: 'pulse-ext', laptop: 'pulse-lap', phone: 'pulse-pho' };
+  const now = Date.now() / 1000;
 
-// ═══════════════════════════════════════════════════
-// PRESENCE STATE MANAGEMENT
-// ═══════════════════════════════════════════════════
-function setPresent(confidence, source) {
-    dom.zone.classList.add('detecting');
-    dom.statusText.className = 'status-text present';
-    dom.statusText.textContent = 'PERSON DETECTED';
-    dom.statusSub.firstChild.textContent = 'WiFi waves disrupted by human body ';
-    wavePresent = true;
+  NODE_KEYS.forEach(k => {
+    const n = nodes[k] || {};
+    const fresh = k === 'laptop' ? true : (now - (n.last_seen || 0)) < 5;
+    const mapDot = $(mapIds[k]);
+    const pulse = $(pulseIds[k]);
 
-    const sourceLabels = {
-        both: 'BOTH NODES',
-        laptop: 'LAPTOP ONLY',
-        phone: 'PHONE ONLY',
-        none: '—'
-    };
-    dom.sourceTag.textContent = sourceLabels[source] || source;
-    dom.confVal.textContent = Math.round(confidence * 100) + '%';
-    dom.confFill.style.width = (confidence * 100) + '%';
-
-    clearTimeout(presenceTimer);
-    presenceTimer = setTimeout(setAbsent, 8000);
-}
-
-function setAbsent() {
-    dom.zone.classList.remove('detecting');
-    dom.statusText.className = 'status-text absent';
-    dom.statusText.textContent = 'NO PRESENCE';
-    dom.statusSub.firstChild.textContent = 'WiFi waves propagating normally ';
-    dom.sourceTag.textContent = '—';
-    dom.confVal.textContent = '0%';
-    dom.confFill.style.width = '0%';
-    wavePresent = false;
-    waveMotion = false;
-}
-
-// ═══════════════════════════════════════════════════
-// CLIENT SIMULATION
-// ═══════════════════════════════════════════════════
-function getSimCSI() {
-    const t = performance.now() / 1000;
-    return {
-        breathing_bpm: 15 + (Math.random() - 0.5) * 2,
-        heart_rate_bpm: 72 + (Math.random() - 0.5) * 4,
-        motion_power: 5 + Math.random() * 2
-    };
-}
-
-// ═══════════════════════════════════════════════════
-// MAIN POLL
-// ═══════════════════════════════════════════════════
-async function poll() {
-    try {
-        // Fused endpoint (includes laptop + phone data)
-        const res = await fetch('/fused');
-        const d = await res.json();
-        fails = 0;
-        dom.offline.style.display = 'none';
-
-        // Laptop node
-        const lp = d.laptop || {};
-        dom.laptopSignal.textContent = lp.signal || 0;
-        dom.laptopZscore.textContent = (lp.zscore || 0).toFixed(2);
-        dom.laptopBar.style.width = (lp.signal || 0) + '%';
-        dom.laptopBar.style.background = (lp.signal > 50) ? 'var(--cyan)' : 'var(--amber)';
-        dom.mRssi.textContent = (lp.signal || 0) + '%';
-
-        laptopHist.push(lp.signal || 0);
-        if (laptopHist.length > 60) laptopHist.shift();
-
-        // Variance
-        if (laptopHist.length > 2) {
-            const mean = laptopHist.reduce((a, b) => a + b, 0) / laptopHist.length;
-            const std = Math.sqrt(laptopHist.reduce((a, b) => a + (b - mean) ** 2, 0) / laptopHist.length);
-            dom.mVar.textContent = std.toFixed(2);
-        }
-
-        // Feed wave animation with real data
-        waveSignal = lp.signal || 50;
-        waveZscore = lp.zscore || 0;
-        waveMotion = d.motion || false;
-        dom.waveRssi.textContent = (lp.signal || 0) + '% RSSI';
-        dom.waveZscore.textContent = 'Z: ' + (lp.zscore || 0).toFixed(2);
-
-        // Phone node
-        const ph = d.phone || {};
-        const phoneOnline = d.phone_online || false;
-        dom.phoneSignal.textContent = ph.signal || '--';
-        dom.phoneZscore.textContent = (ph.zscore || 0).toFixed(2);
-        dom.phoneBar.style.width = (ph.signal || 0) + '%';
-        dom.phoneStatus.textContent = phoneOnline ? 'ONLINE' : 'OFFLINE';
-        dom.phoneStatus.className = 'node-status ' + (phoneOnline ? 'online' : 'offline');
-
-        if (phoneOnline) {
-            phoneHist.push(ph.signal || 0);
-            if (phoneHist.length > 60) phoneHist.shift();
-        }
-
-        // Fused detection
-        if (d.motion) {
-            setPresent(d.confidence, d.source);
-
-            // Flash border
-            dom.flash.className = 'motion-flash active' + (d.confidence >= 1 ? '' : ' amber');
-            setTimeout(() => dom.flash.className = 'motion-flash', 300);
-
-            if (d.timestamp !== lastMotionTs) {
-                lastMotionTs = d.timestamp;
-                playBeep(d.confidence >= 1 ? 440 : 330);
-                const srcLabel = d.source === 'both' ? 'BOTH CONFIRMED' : d.source.toUpperCase();
-                addLog('motion', `MOTION · ${srcLabel} · Conf: ${(d.confidence * 100).toFixed(0)}% · Z:${(lp.zscore||0).toFixed(2)}`);
-            }
-        }
-
-        drawChart();
-    } catch (err) {
-        fails++;
-        if (fails >= 3) dom.offline.style.display = 'block';
-    }
-
-    // CSI data
-    let csi = null;
-    if (clientSim) {
-        csi = getSimCSI();
-        setPresent(1, 'sim');
-        waveSignal = 70 + Math.sin(performance.now() * 0.001) * 15;
-        waveZscore = 2.5 + Math.sin(performance.now() * 0.002) * 1;
-        waveMotion = true;
-        wavePresent = true;
+    if (n.motion && fresh) {
+      mapDot.setAttribute('fill', 'rgba(255,68,68,0.3)');
+      mapDot.setAttribute('stroke', '#ff4444');
+      pulse.setAttribute('opacity', '1');
+      pulse.innerHTML = `<animate attributeName="r" from="14" to="30" dur="1s" repeatCount="indefinite"/>
+        <animate attributeName="opacity" from="0.8" to="0" dur="1s" repeatCount="indefinite"/>`;
     } else {
-        try {
-            const r2 = await fetch('/csi');
-            csi = await r2.json();
-        } catch (e) {}
+      mapDot.setAttribute('fill', fresh ? `${NODE_COLORS[k]}22` : 'rgba(255,255,255,0.03)');
+      mapDot.setAttribute('stroke', fresh ? NODE_COLORS[k] : '#4a5568');
+      pulse.setAttribute('opacity', '0');
+      pulse.innerHTML = '';
+    }
+  });
+
+  // Link lines — light green when both endpoints online
+  const linkPairs = [
+    ['link-ext-lap', 'extender', 'laptop'],
+    ['link-lap-pho', 'laptop', 'phone'],
+    ['link-ext-pho', 'extender', 'phone']
+  ];
+  linkPairs.forEach(([id, a, b]) => {
+    const aFresh = a === 'laptop' ? true : (now - (nodes[a]?.last_seen || 0)) < 5;
+    const bFresh = b === 'laptop' ? true : (now - (nodes[b]?.last_seen || 0)) < 5;
+    const line = $(id);
+    if (aFresh && bFresh) {
+      line.setAttribute('stroke', 'rgba(29,158,117,0.35)');
+      line.setAttribute('stroke-width', '1.5');
+    } else {
+      line.setAttribute('stroke', 'rgba(255,255,255,0.06)');
+      line.setAttribute('stroke-width', '1');
+    }
+  });
+}
+
+function updateFused(data) {
+  const conf = data.confidence || 0;
+  const pct = Math.round(conf * 100);
+  confBar.style.width = `${pct}%`;
+  confLabel.textContent = `${pct}%`;
+  fusedSource.textContent = data.source || 'none';
+
+  // Color tier
+  confBar.className = 'conf-bar-fill ' + (conf >= 0.67 ? 'high' : conf >= 0.33 ? 'mid' : 'low');
+
+  // Alert state
+  const isAlert = data.motion && conf >= 0.33;
+  fusedCard.classList.toggle('alert', isAlert);
+
+  // Beep logic
+  if (isAlert && !lastMotionState) {
+    if (conf >= 1.0) tripleBeep();
+    else if (conf >= 0.67) beep(440, 100);
+    else beep(330, 80);
+  }
+  lastMotionState = isAlert;
+
+  // Floor badge
+  floorBadge.textContent = `1ST FLOOR MESH: ${data.floor1_active || 0}/3 ACTIVE`;
+}
+
+function addLogEntry(data) {
+  if (!data.motion) return;
+  const now = new Date();
+  const ts = now.toTimeString().slice(0, 8);
+  const conf = (data.confidence || 0).toFixed(2);
+  const src = data.source || 'unknown';
+
+  const entry = { ts, src, conf, floor: 1 };
+  events.push(entry);
+
+  const div = document.createElement('div');
+  div.className = 'log-entry';
+  div.innerHTML = `[${ts}] <span class="tag-motion">MOTION</span>  src:${src}  <span class="conf">conf:${conf}</span>  floor:1`;
+  logList.insertBefore(div, logList.firstChild);
+
+  // Trim log
+  while (logList.children.length > 100) logList.removeChild(logList.lastChild);
+}
+
+function updateChart() {
+  chart.data.datasets[0].data = history.extender.slice(-MAX_HISTORY);
+  chart.data.datasets[1].data = history.laptop.slice(-MAX_HISTORY);
+  chart.data.datasets[2].data = history.phone.slice(-MAX_HISTORY);
+  const maxLen = Math.max(history.extender.length, history.laptop.length, history.phone.length, MAX_HISTORY);
+  chart.data.labels = Array(Math.min(maxLen, MAX_HISTORY)).fill('');
+  chart.update('none');
+}
+
+// ═══════════════════════════════════════════════════════
+// LOG CONTROLS
+// ═══════════════════════════════════════════════════════
+clearLogBtn.addEventListener('click', () => {
+  logList.innerHTML = '';
+  events = [];
+});
+
+exportCsvBtn.addEventListener('click', () => {
+  let csv = 'Timestamp,Source,Confidence,Floor\n';
+  events.forEach(e => csv += `${e.ts},${e.src},${e.conf},${e.floor}\n`);
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `wifi_events_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+// ═══════════════════════════════════════════════════════
+// SIMULATION ENGINE
+// ═══════════════════════════════════════════════════════
+function simZscore(val, win) {
+  if (win.length < 5) return 0;
+  const m = win.reduce((a, b) => a + b, 0) / win.length;
+  const v = win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length;
+  const s = Math.sqrt(v) || 0.001;
+  return (val - m) / s;
+}
+
+function runSimTick() {
+  simTick++;
+  const thr = parseFloat(thrSlider.value);
+
+  // Burst logic: every 12s, burst for 5s
+  if (!simBursting && simTick % 12 === 0) {
+    simBursting = true;
+    simBurstStart = simTick;
+  }
+  if (simBursting && simTick - simBurstStart >= 5) {
+    simBursting = false;
+  }
+
+  const bases = { extender: 71, laptop: 78, phone: 65 };
+  const spreads = { extender: 5, laptop: 4, phone: 6 };
+  const drop = simBursting ? (12 + Math.random() * 6) : 0;
+
+  const nodes = {};
+  let activeCount = 3;
+  const motionNodes = [];
+
+  NODE_KEYS.forEach(k => {
+    const base = bases[k] + (Math.random() - 0.5) * spreads[k] * 2;
+    const signal = Math.round(Math.max(0, Math.min(100, base - drop)));
+
+    simWindows[k].push(signal);
+    if (simWindows[k].length > 20) simWindows[k].shift();
+
+    const z = simZscore(signal, simWindows[k]);
+    let motion = false;
+    if (simWindows[k].length >= 5 && Math.abs(z) > thr) {
+      simConsec[k]++;
+      if (simConsec[k] >= 2) { motion = true; simConsec[k] = 0; }
+    } else {
+      simConsec[k] = 0;
     }
 
-    if (csi) {
-        const hr = csi.heart_rate_bpm || 0;
-        const br = csi.breathing_bpm || 0;
-        if (hr > 0) dom.mHr.innerHTML = hr.toFixed(0) + ' <small style="font-size:0.6rem;color:var(--text-dim)">BPM</small>';
-        if (br > 0) dom.mBreath.innerHTML = br.toFixed(0) + ' <small style="font-size:0.6rem;color:var(--text-dim)">RPM</small>';
+    if (motion) motionNodes.push(k);
+
+    nodes[k] = {
+      signal, zscore: Math.round(z * 1000) / 1000,
+      motion, timestamp: Date.now() / 1000, last_seen: Date.now() / 1000
+    };
+  });
+
+  const conf = motionNodes.length / 3;
+  const fusedData = {
+    motion: conf >= 1 / 3,
+    confidence: Math.round(conf * 100) / 100,
+    source: motionNodes.length ? motionNodes.join('+') : 'none',
+    floor1_active: activeCount,
+    timestamp: Date.now() / 1000,
+    nodes
+  };
+
+  processData(fusedData);
+}
+
+// ═══════════════════════════════════════════════════════
+// UNIFIED DATA PROCESSOR
+// ═══════════════════════════════════════════════════════
+function processData(data) {
+  const nodes = data.nodes || {};
+
+  NODE_KEYS.forEach(k => {
+    if (nodes[k]) {
+      updateNodeCard(k, nodes[k]);
+      history[k].push(nodes[k].signal || 0);
+      if (history[k].length > MAX_HISTORY) history[k].shift();
     }
+  });
+
+  updateFloorMap(nodes);
+  updateFused(data);
+  addLogEntry(data);
+  updateChart();
+}
+
+// ═══════════════════════════════════════════════════════
+// POLLING LOOP
+// ═══════════════════════════════════════════════════════
+async function poll() {
+  if (simMode) {
+    runSimTick();
+    failStrikes = 0;
+    offlineBanner.classList.remove('visible');
+    return;
+  }
+
+  try {
+    const resp = await fetch('/fused');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    processData(data);
+    failStrikes = 0;
+    offlineBanner.classList.remove('visible');
+  } catch (e) {
+    failStrikes++;
+    if (failStrikes >= 3) {
+      offlineBanner.classList.add('visible');
+    }
+  }
 }
 
 setInterval(poll, 1000);
 
-// ═══════════════════════════════════════════════════
-// UI CONTROLS
-// ═══════════════════════════════════════════════════
-
-// Settings
-dom.btnSettings.addEventListener('click', () => dom.settingsPanel.classList.toggle('open'));
-
-// Threshold
-dom.threshSlider.addEventListener('input', e => {
-    dom.threshDisplay.textContent = parseFloat(e.target.value).toFixed(1) + 'σ';
-});
-dom.threshSlider.addEventListener('change', e => {
-    fetch('/set_threshold/' + e.target.value).catch(() => {});
-});
-
-// Audio
-function syncAudio() {
-    dom.btnMute.textContent = beepOn ? '🔔' : '🔕';
-    dom.toggleAudio.textContent = beepOn ? 'ON' : 'OFF';
-    dom.toggleAudio.classList.toggle('on', beepOn);
-}
-syncAudio();
-dom.btnMute.addEventListener('click', () => { beepOn = !beepOn; localStorage.setItem('beep', beepOn); syncAudio(); });
-dom.toggleAudio.addEventListener('click', () => dom.btnMute.click());
-
-// Simulation
-function syncSim() {
-    dom.btnSim.classList.toggle('active', clientSim);
-    dom.btnSim.textContent = clientSim ? 'SIM' : 'SIM';
-    dom.toggleSim.textContent = clientSim ? 'ON' : 'OFF';
-    dom.toggleSim.classList.toggle('on', clientSim);
-}
-dom.btnSim.addEventListener('click', () => { clientSim = !clientSim; syncSim(); });
-dom.toggleSim.addEventListener('click', () => dom.btnSim.click());
-
-// Log controls
-$('btn-clear').addEventListener('click', () => {
-    dom.logScroll.innerHTML = '<div class="log-empty">Log cleared</div>';
-    logEntries = [];
-    firstLog = true;
-    dom.eventCount.textContent = '0 events';
-});
-$('btn-export').addEventListener('click', () => {
-    if (!logEntries.length) return;
-    let csv = 'Time,Event\n';
-    logEntries.forEach(e => csv += `${e.time},"${e.text}"\n`);
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = 'humansense_log.csv';
-    a.click();
-});
-
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-    if (e.key === 's' || e.key === 'S') dom.settingsPanel.classList.toggle('open');
-    if (e.key === 'm' || e.key === 'M') dom.btnMute.click();
-    if (e.key === ' ') { e.preventDefault(); dom.btnSim.click(); }
-});
+// Initial poll
+poll();
 </script>
 </body>
 </html>

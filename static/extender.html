@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WiFi Phone Node</title>
+<title>WiFi Extender Node</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;600;700&display=swap" rel="stylesheet">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
-:root{--bg:#0a0e1a;--surface:#0f1424;--amber:#BA7517;--text:#e0e6f0;--muted:#6b7a99;
+:root{--bg:#0a0e1a;--surface:#0f1424;--teal:#1D9E75;--text:#e0e6f0;--muted:#6b7a99;
   --border:rgba(255,255,255,0.06);--glass:rgba(255,255,255,0.03);--font:'JetBrains Mono',monospace}
 body{background:var(--bg);color:var(--text);font-family:var(--font);
   display:flex;flex-direction:column;align-items:center;justify-content:center;
@@ -15,28 +15,33 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .card{background:var(--glass);border:1px solid rgba(255,255,255,0.08);border-radius:20px;
   padding:32px;width:100%;max-width:360px;text-align:center;
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.title{font-size:0.8rem;font-weight:700;letter-spacing:0.12em;color:var(--amber);
+.title{font-size:0.8rem;font-weight:700;letter-spacing:0.12em;color:var(--teal);
   margin-bottom:4px;text-transform:uppercase}
 .subtitle{font-size:0.65rem;color:var(--muted);margin-bottom:24px}
+/* Gauge */
 .gauge-svg{width:180px;height:180px;margin:0 auto 20px}
 .gauge-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:10}
-.gauge-fill{fill:none;stroke:var(--amber);stroke-width:10;stroke-linecap:round;
+.gauge-fill{fill:none;stroke:var(--teal);stroke-width:10;stroke-linecap:round;
   transition:stroke-dashoffset 0.5s cubic-bezier(0.16,1,0.3,1)}
 .gauge-text{font-family:var(--font);font-size:32px;font-weight:700;fill:var(--text);text-anchor:middle}
 .gauge-label{font-family:var(--font);font-size:10px;fill:var(--muted);text-anchor:middle}
+/* Metrics */
 .metrics{display:flex;justify-content:space-around;margin-bottom:20px;font-size:0.72rem}
 .metric{text-align:center}
 .metric .val{font-weight:600;font-size:0.85rem;color:var(--text)}
 .metric .lbl{color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em}
+/* Status */
 .status-badge{display:inline-block;padding:4px 16px;border-radius:20px;font-size:0.7rem;
   font-weight:700;letter-spacing:0.1em;margin-bottom:16px}
-.status-badge.sending{background:rgba(186,117,23,0.12);color:var(--amber);border:1px solid rgba(186,117,23,0.25)}
+.status-badge.sending{background:rgba(29,158,117,0.12);color:var(--teal);border:1px solid rgba(29,158,117,0.25)}
 .status-badge.error{background:rgba(255,68,68,0.12);color:#ff4444;border:1px solid rgba(255,68,68,0.25)}
 .status-badge.idle{background:rgba(107,122,153,0.12);color:var(--muted);border:1px solid rgba(107,122,153,0.2)}
+/* Server input */
 .server-input{width:100%;background:var(--surface);border:1px solid var(--border);
   color:var(--text);font-family:var(--font);font-size:0.72rem;padding:8px 12px;
   border-radius:10px;text-align:center;margin-bottom:12px}
-.server-input:focus{outline:none;border-color:rgba(186,117,23,0.4)}
+.server-input:focus{outline:none;border-color:rgba(29,158,117,0.4)}
+/* Log */
 .log{margin-top:16px;max-height:120px;overflow-y:auto;font-size:0.6rem;color:var(--muted);
   text-align:left;border-top:1px solid var(--border);padding-top:8px}
 .log::-webkit-scrollbar{width:3px}
@@ -48,7 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 <body>
 
 <div class="card">
-  <div class="title">Phone Node</div>
+  <div class="title">Extender Node</div>
   <div class="subtitle">WiFi signal proxy via RTT — posts to laptop server</div>
 
   <svg class="gauge-svg" viewBox="0 0 180 180">
@@ -71,8 +76,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
          placeholder="http://laptop-ip:5000"/>
 
   <div class="note">
-    Open this page on your phone's browser.<br>
-    Set the URL to your laptop's local IP. Signal data auto-POSTs every second.
+    Open this page on a device connected to the WiFi extender.<br>
+    Set the URL to your laptop's local IP. The page will auto-POST signal data every second.
   </div>
 
   <div class="log" id="log"></div>
@@ -107,14 +112,18 @@ function updateGauge(pct) {
 async function measureAndSend() {
   const base = serverUrl.value.replace(/\/+$/, '');
 
+  // Measure RTT to server as signal proxy
   const t0 = performance.now();
   let rtt = 999;
   let signal = 0;
 
   try {
+    // Ping the fused endpoint to measure latency
     await fetch(`${base}/fused`, { method: 'GET', mode: 'cors', cache: 'no-cache' });
     rtt = Math.round(performance.now() - t0);
 
+    // Convert RTT to signal percentage
+    // Lower RTT = better signal. Typical LAN: 1-20ms. WiFi: 5-100ms
     if (rtt <= 5) signal = 98;
     else if (rtt <= 10) signal = 90;
     else if (rtt <= 20) signal = 80;
@@ -124,13 +133,15 @@ async function measureAndSend() {
     else if (rtt <= 300) signal = 25;
     else signal = 10;
 
+    // Add jitter for more natural readings
     signal = Math.max(1, Math.min(100, signal + Math.round((Math.random() - 0.5) * 6)));
 
     rttVal.textContent = rtt;
     sigVal.textContent = signal;
     updateGauge(signal);
 
-    const resp = await fetch(`${base}/phone`, {
+    // POST to extender endpoint
+    const resp = await fetch(`${base}/extender`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ signal, rtt })
@@ -157,7 +168,7 @@ async function measureAndSend() {
 }
 
 setInterval(measureAndSend, 1000);
-addLog('Phone node started');
+addLog('Extender node started');
 </script>
 </body>
 </html>
