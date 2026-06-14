@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wi-Fi RF Human Sensing Dashboard</title>
+<title>Wi-Fi RF Human Sensing Dashboard (Production)</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -39,11 +39,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 #scene-col{width:55%;height:100vh;position:relative;}
 #panel-col{width:45%;height:100vh;overflow-y:auto;padding:24px;
   display:flex;flex-direction:column;gap:16px;background:rgba(15,20,36,0.5);
-  border-left:1px solid var(--border);}
+  border-left:1px solid var(--border); padding-bottom: 80px;} /* space for drawer */
+
 @media(max-width:768px){
   body{flex-direction:column;overflow-y:auto;}
   #scene-col{width:100%;height:50vh;}
-  #panel-col{width:100%;height:auto;overflow:visible;}
+  #panel-col{width:100%;height:auto;overflow:visible;padding-bottom:100px;}
 }
 
 /* ── 3D Scene HUD ── */
@@ -57,6 +58,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .hud-state{font-size:1.4rem;font-weight:800;letter-spacing:0.04em;margin-bottom:4px;
   text-shadow:0 0 10px rgba(0,0,0,0.5);}
 .hud-conf{font-size:0.8rem;color:var(--text);font-weight:600;}
+
+/* ── Tooltip ── */
+#nodeTooltip{
+  position:absolute; display:none; background:rgba(15,20,36,0.9);
+  border:1px solid rgba(255,255,255,0.15); padding:10px; border-radius:8px;
+  color:#fff; font-size:0.65rem; pointer-events:none; z-index:100;
+  transform:translate(-50%,-100%); margin-top:-15px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
+  backdrop-filter:blur(4px); white-space:nowrap;
+}
+.tt-title{font-weight:800;font-size:0.75rem;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.tt-row{display:flex;justify-content:space-between;gap:12px;margin-bottom:2px;}
+.tt-lbl{color:var(--muted);}
 
 /* ── State Panel ── */
 .panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
@@ -135,22 +148,48 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .mute-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;}
 .mute-btn.active{color:var(--motion);}
 .btn-toggle{background:var(--glass);border:1px solid var(--border);color:var(--muted);
-  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.6rem;cursor:pointer;}
-.btn-toggle.active{background:rgba(255,255,255,0.1);color:var(--text);}
+  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.6rem;cursor:pointer; transition:0.2s;}
+.btn-toggle.active{background:rgba(255,255,255,0.1);color:var(--text); border-color:rgba(255,255,255,0.2);}
+
+/* ── Bottom Drawer (Session Stats) ── */
+.bottom-drawer{
+  position:fixed; bottom:0; left:0; width:100%;
+  background:rgba(10,13,26,0.95); backdrop-filter:blur(10px);
+  border-top:1px solid var(--glass-border);
+  transform:translateY(calc(100% - 30px)); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
+  z-index:60; display:flex; flex-direction:column; align-items:center;
+}
+.bottom-drawer.open{transform:translateY(0);}
+.drawer-handle-area{width:100%; height:30px; display:flex; justify-content:center; align-items:center; cursor:pointer;}
+.drawer-handle{width:40px; height:4px; background:var(--muted); border-radius:2px; opacity:0.5;}
+.drawer-handle-area:hover .drawer-handle{opacity:1;}
+.drawer-content{width:100%; padding:0 24px 24px 24px; max-width:800px;}
+.drawer-title{font-size:0.65rem; font-weight:700; color:var(--muted); letter-spacing:0.1em; margin-bottom:12px;}
+.stats-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px;}
+@media(max-width:600px){ .stats-grid{grid-template-columns:repeat(2,1fr);} }
+.stat-box{background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center;}
+.stat-val{font-size:1.4rem; font-weight:800; color:var(--text); line-height:1.2;}
+.stat-val.highlight{color:var(--motion);}
+.stat-lbl{font-size:0.55rem; color:var(--muted); letter-spacing:0.05em; margin-top:4px;}
 
 .offline-banner{position:fixed;top:10px;left:50%;transform:translateX(-50%);
   background:rgba(229,62,62,0.15);border:1px solid rgba(229,62,62,0.3);
   color:var(--motion);padding:6px 18px;border-radius:10px;font-size:0.7rem;
   font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px);}
 .offline-banner.visible{display:block;}
+
+.ws-indicator{position:absolute; top:20px; right:20px; font-size:0.6rem; padding:4px 8px; border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); z-index:10;}
+.ws-indicator.active{color:var(--idle); border-color:rgba(56,161,105,0.3);}
 </style>
 </head>
 <body>
 
 <div class="offline-banner" id="offlineBanner">SERVER UNREACHABLE</div>
+<div id="nodeTooltip"></div>
 
 <!-- LEFT COLUMN: 3D SCENE -->
 <div id="scene-col">
+  <div class="ws-indicator" id="wsIndicator">WS: OFF</div>
   <canvas id="threeCanvas"></canvas>
   <div id="hudOverlay">
     <div class="hud-title"><div class="blink-dot"></div> RF VISION ACTIVE</div>
@@ -247,6 +286,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
         <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
       </label>
       <button class="btn-toggle active" id="btnRotate">ROTATE</button>
+      <button class="btn-toggle" id="btnView2D">2D VIEW</button>
     </div>
     <div class="ctrl-group">
       <label class="ctrl-lbl">
@@ -257,6 +297,34 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
     </div>
   </div>
 
+</div>
+
+<!-- BOTTOM DRAWER (STATS) -->
+<div class="bottom-drawer" id="bottomDrawer">
+  <div class="drawer-handle-area" id="drawerHandleArea">
+    <div class="drawer-handle"></div>
+  </div>
+  <div class="drawer-content">
+    <div class="drawer-title">SESSION STATISTICS</div>
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-val highlight" id="stat-total">0</div>
+        <div class="stat-lbl">MOTION EVENTS</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-eph">0.0</div>
+        <div class="stat-lbl">EVENTS / HR</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-active" style="color:var(--laptop)">--</div>
+        <div class="stat-lbl">MOST ACTIVE</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-val" id="stat-avg-conf">0%</div>
+        <div class="stat-lbl">AVG CONFIDENCE</div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -277,8 +345,15 @@ let sysState={state:'CALIBRATING',conf:0,nodes:{},pos:{}};
 let history={laptop:[],phone:[],extender:[]};
 let sparkH={laptop:[],phone:[],extender:[]};
 let logEvents=[];
-let muted=false, simMode=false, autoRotate=true;
+let muted=false, simMode=false, autoRotate=true, is2D=false;
 let failStrikes=0;
+let wsConnected=false;
+
+// Session Stats
+let sessStart = Date.now();
+let sessEvents = 0;
+let sessConfSum = 0;
+let nodeTriggers = {laptop:0, phone:0, extender:0};
 
 // Audio
 let actx=null;
@@ -296,6 +371,9 @@ function beep(f,d=80){
 let scene,camera,renderer,clock;
 let spheres={}, ringsPool=[], links={}, personZone, personLabel;
 let isDragging=false, dragTimer=0;
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+let hoveredNode = null;
 
 function createTextSprite(msg, color){
   const canvas=document.createElement('canvas');
@@ -353,10 +431,10 @@ function init3D(){
   scene.add(fL);
 
   // Nodes
-  spheres.extender = makeNode(0x1D9E75, 0.25, "EXTENDER", true);
-  spheres.router   = makeNode(0x534AB7, 0.25, "ROUTER", false);
-  spheres.laptop   = makeNode(0x378ADD, 0.22, "LAPTOP", false);
-  spheres.phone    = makeNode(0xBA7517, 0.20, "PHONE", false);
+  spheres.extender = makeNode(0x1D9E75, 0.25, "EXTENDER", true, 'extender');
+  spheres.router   = makeNode(0x534AB7, 0.25, "ROUTER", false, 'router');
+  spheres.laptop   = makeNode(0x378ADD, 0.22, "LAPTOP", false, 'laptop');
+  spheres.phone    = makeNode(0xBA7517, 0.20, "PHONE", false, 'phone');
 
   // Router line
   const rlGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-4,0),new THREE.Vector3(0,0,0)]);
@@ -393,15 +471,53 @@ function init3D(){
     ringsPool.push(r);
   }
 
-  // Interaction
+  // Interaction (Camera & Tooltips)
   let isDown=false;
   renderer.domElement.addEventListener('pointerdown',()=>{isDown=true;isDragging=true;});
   renderer.domElement.addEventListener('pointerup',()=>{isDown=false;dragTimer=3.0;});
   renderer.domElement.addEventListener('pointermove',(e)=>{
-    if(isDown){
+    if(isDown && !is2D){
       camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-e.movementX*0.01);
       camera.position.y+=e.movementY*0.02;
-      camera.lookAt(0,-1,0);
+      camera.lookAt(0, is2D?0:-1, 0);
+    }
+    
+    // Tooltip Raycast
+    const rect = renderer.domElement.getBoundingClientRect();
+    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    
+    const interactables = [spheres.extender.userData.mesh, spheres.laptop.userData.mesh, spheres.phone.userData.mesh, spheres.router.userData.mesh];
+    const intersects = raycaster.intersectObjects(interactables);
+    
+    const tt = $('nodeTooltip');
+    if(intersects.length > 0){
+      document.body.style.cursor='pointer';
+      const key = intersects[0].object.parent.userData.key;
+      const n = sysState.nodes[key] || {};
+      const p = sysState.pos[key] || {};
+      
+      let html = `<div class="tt-title" style="color:#${COLS[key].toString(16)}">${key.toUpperCase()}</div>`;
+      if(key !== 'router'){
+        html += `
+          <div class="tt-row"><span class="tt-lbl">Signal:</span> <span>${n.signal||0}%</span></div>
+          <div class="tt-row"><span class="tt-lbl">Z-Score:</span> <span>${(n.zscore||0).toFixed(2)}</span></div>
+          <div class="tt-row"><span class="tt-lbl">Distance:</span> <span>${p.distance_from_extender ? p.distance_from_extender.toFixed(2)+'m' : (p.fixed?'0.00m':'--')}</span></div>
+          <div class="tt-row"><span class="tt-lbl">Status:</span> <span>${n.online?(n.calibrated?'ONLINE':'CALIBRATING'):'OFFLINE'}</span></div>
+          <div class="tt-row"><span class="tt-lbl">Last seen:</span> <span>${n.online?'Just now':'>5s ago'}</span></div>
+        `;
+      } else {
+        html += `<div class="tt-row"><span class="tt-lbl">Type:</span> <span>Fixed Anchor</span></div>`;
+      }
+      
+      tt.innerHTML = html;
+      tt.style.display = 'block';
+      tt.style.left = e.clientX + 'px';
+      tt.style.top = e.clientY + 'px';
+    } else {
+      document.body.style.cursor='default';
+      tt.style.display = 'none';
     }
   });
 
@@ -415,8 +531,10 @@ function init3D(){
   setInterval(emitRings, 2000);
 }
 
-function makeNode(color, r, labelText, hasTorus){
+function makeNode(color, r, labelText, hasTorus, key){
   const g=new THREE.Group();
+  g.userData.key = key;
+  
   const geo=new THREE.SphereGeometry(r,16,16);
   const mat=new THREE.MeshBasicMaterial({color:color});
   const mesh=new THREE.Mesh(geo,mat);
@@ -437,8 +555,9 @@ function makeNode(color, r, labelText, hasTorus){
   const lbl=createTextSprite(labelText, '#ffffff');
   lbl.position.y=r+0.3;
   g.add(lbl);
+  g.userData.lbl = lbl;
 
-  g.userData={mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3()};
+  g.userData={...g.userData, mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3()};
   scene.add(g);
   return g;
 }
@@ -489,7 +608,7 @@ function render3D(){
   const t=clock.getElapsedTime();
 
   // Auto rotate
-  if(!isDragging && autoRotate){
+  if(!isDragging && autoRotate && !is2D){
     camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.002);
     camera.lookAt(0,-1,0);
   }
@@ -507,6 +626,17 @@ function render3D(){
     if(pos[k]){
       s.userData.targetPos.set(pos[k].x,pos[k].y,pos[k].z);
       s.position.lerp(s.userData.targetPos, 0.05);
+    }
+    
+    // 2D view label adjustments
+    if(s.userData.lbl){
+      s.userData.lbl.position.y = is2D ? 0 : (s.userData.r + 0.3);
+      s.userData.lbl.position.z = is2D ? -0.5 : 0;
+      
+      // In 2D view add signal % to label if online
+      if(is2D && n[k] && n[k].online){
+         // Handled natively by creating extra sprite or just keep it simple
+      }
     }
     
     if(k==='laptop'||k==='phone'){
@@ -570,7 +700,8 @@ function render3D(){
     personLabel.visible=(conf>=0.5);
     if(personLabel.visible){
       personLabel.position.copy(center);
-      personLabel.position.y+=r+0.5;
+      personLabel.position.y += is2D ? 0 : (r+0.5);
+      personLabel.position.z = is2D ? -r-0.5 : 0;
     }
   }else{
     personZone.material.opacity=0;
@@ -684,12 +815,61 @@ function processData(d){
     $('logList').prepend(div);
     if($('logList').children.length>30) $('logList').lastChild.remove();
     logEvents.push({ts,st:sysState.state,src:d.source,conf:sysState.conf});
+    
+    // Update Stats
+    sessEvents++;
+    sessConfSum += sysState.conf;
+    if(d.source){
+      const srcs = d.source.split('+');
+      srcs.forEach(s => { if(nodeTriggers[s]!==undefined) nodeTriggers[s]++; });
+    }
+    updateStats();
   }
 }
 
-// ── POLLING / SIM ──
+function updateStats(){
+  $('stat-total').textContent = sessEvents;
+  
+  const hrs = (Date.now() - sessStart) / 3600000;
+  $('stat-eph').textContent = (sessEvents / Math.max(hrs, 0.01)).toFixed(1);
+  
+  let best='--', max=0;
+  KEYS.forEach(k=>{ if(nodeTriggers[k]>max){max=nodeTriggers[k]; best=k;} });
+  $('stat-active').textContent = best.toUpperCase();
+  $('stat-active').style.color = COLS[best]? '#'+COLS[best].toString(16) : 'inherit';
+  
+  $('stat-avg-conf').textContent = sessEvents ? Math.round((sessConfSum/sessEvents)*100)+'%' : '0%';
+}
+
+// ── WEBSOCKET / POLLING / SIM ──
+let ws = null;
+function initWS(){
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+  ws.onopen = () => {
+    wsConnected = true;
+    $('wsIndicator').textContent = 'WS: ON';
+    $('wsIndicator').classList.add('active');
+  };
+  ws.onmessage = (e) => {
+    try {
+      const data = JSON.parse(e.data);
+      processData(data);
+      failStrikes = 0; $('offlineBanner').classList.remove('visible');
+    } catch(err){}
+  };
+  ws.onerror = () => { wsConnected = false; updateWSIndicator(); };
+  ws.onclose = () => { wsConnected = false; updateWSIndicator(); setTimeout(initWS, 5000); };
+}
+function updateWSIndicator() {
+  $('wsIndicator').textContent = 'WS: OFF (POLLING)';
+  $('wsIndicator').classList.remove('active');
+}
+
 async function poll(){
   if(simMode){runSim();return;}
+  if(wsConnected) return; // let WS handle it
+  
   try{
     const r=await fetch('/fused');
     if(!r.ok)throw new Error();
@@ -722,16 +902,30 @@ function runSim(){
       phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?-2.8:0.1,motion:md,online:true,calibrated:true}
     },
     positions: {
-      extender:{x:0,y:0,z:0},
-      router:{x:0,y:0,z:-4},
-      laptop:{x:2.1,y:0.9,z:0.2,distance_from_extender:isBurst?2.8:2.3},
-      phone:{x:-1.8,y:1.5,z:0.05,distance_from_extender:isBurst?3.0:2.4}
+      extender:{x:0,y:0,z:0,fixed:true},
+      router:{x:0,y:0,z:-4,fixed:true},
+      laptop:{x:2.1,y:0.9,z:0.2,distance_from_extender:isBurst?2.8:2.3,fixed:false},
+      phone:{x:-1.8,y:1.5,z:0.05,distance_from_extender:isBurst?3.0:2.4,fixed:false}
     }
   });
 }
 
 // ── INIT ──
 $('btnRotate').onclick=e=>{autoRotate=!autoRotate;e.target.classList.toggle('active',autoRotate);};
+$('btnView2D').onclick=e=>{
+  is2D=!is2D;
+  e.target.textContent=is2D?"3D VIEW":"2D VIEW";
+  e.target.classList.toggle('active',is2D);
+  if(is2D){
+    autoRotate=false; $('btnRotate').classList.remove('active');
+    camera.position.set(0,12,0.01);
+    camera.lookAt(0,0,0);
+  }else{
+    camera.position.set(8,5,8);
+    camera.lookAt(0,-1,0);
+  }
+};
+
 $('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'&#128263;':'&#128266;';e.target.classList.toggle('active',muted);};
 $('simToggle').onchange=e=>{simMode=e.target.checked;$('simBadge').classList.toggle('active',simMode);};
 $('thrSlider').oninput=e=>{$('thrVal').textContent=e.target.value;if(!simMode)fetch('/set_threshold/'+e.target.value).catch(()=>{});};
@@ -741,7 +935,12 @@ $('btnExport').onclick=()=>{
   a.download='events.csv';a.click();
 };
 
+$('drawerHandleArea').onclick=()=>{
+  $('bottomDrawer').classList.toggle('open');
+};
+
 init3D();
+initWS();
 setInterval(poll,1000);
 poll();
 </script>
