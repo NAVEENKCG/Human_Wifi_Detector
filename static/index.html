@@ -200,6 +200,20 @@ let w, h, cx, cy, radius, scale;
 let sweepAng = 0;
 let blips = []; 
 
+// Target and smoothed positions for adaptive lerping and dead reckoning
+const posTarget = { laptop: {x:0, z:0, vx:0, vz:0}, phone: {x:0, z:0, vx:0, vz:0} };
+const posLerp   = { laptop: {x:0, z:0}, phone: {x:0, z:0} };
+let lastFetchTime = Date.now();
+
+// Separate slower EMA for displaying distance values (if needed)
+const dispDist = { laptop: null, phone: null };
+function smoothDisplayDist(key, raw) {
+  if (dispDist[key] === null) { dispDist[key] = raw; return raw; }
+  if (Math.abs(raw - dispDist[key]) < 0.15) return dispDist[key];
+  dispDist[key] = 0.12 * raw + 0.88 * dispDist[key];
+  return Math.round(dispDist[key] * 10) / 10;
+}
+
 function resize(){
   const rect = canvas.parentElement.getBoundingClientRect();
   canvas.width = rect.width * window.devicePixelRatio;
@@ -255,13 +269,34 @@ function renderRadar(){
   }
   ctx.restore();
 
-  // Detect and inject blips
-  const p = sysState.pos;
-  if (p && p.laptop && p.phone) {
-    let lx = p.laptop.x, lz = p.laptop.z;
+  // Dead Reckoning & Adaptive Lerp for Nodes
+  const msSinceFetch = Date.now() - lastFetchTime;
+  ['laptop','phone'].forEach(k => {
+    let tg = posTarget[k];
+    // Predict between fetches (within 800ms)
+    if (msSinceFetch < 800) {
+      let dt = (msSinceFetch/1000) * 0.3; 
+      tg.x += tg.vx * dt * 0.1;
+      tg.z += tg.vz * dt * 0.1;
+    }
+    
+    // Adaptive lerp factor based on distance to target
+    let dx = tg.x - posLerp[k].x;
+    let dz = tg.z - posLerp[k].z;
+    let dist = Math.sqrt(dx*dx + dz*dz);
+    let lerpFactor = dist > 2.0 ? 0.12 : (dist > 0.8 ? 0.08 : (dist > 0.2 ? 0.05 : 0.02));
+    
+    posLerp[k].x += dx * lerpFactor;
+    posLerp[k].z += dz * lerpFactor;
+  });
+
+  // Detect and inject blips using smoothed lerped positions
+  const n = sysState.nodes;
+  if (n.laptop && n.phone) {
+    let lx = posLerp.laptop.x, lz = posLerp.laptop.z;
     
     // Phone Node
-    let px = p.phone.x, pz = p.phone.z;
+    let px = posLerp.phone.x, pz = posLerp.phone.z;
     let phdx = px - lx, phdz = pz - lz;
     let phAng = Math.atan2(phdz, phdx);
     if(phAng < 0) phAng += Math.PI*2;
@@ -269,7 +304,7 @@ function renderRadar(){
       blips.push({x: phdx, y: phdz, life: 1.0, type: 'phone'});
     }
 
-    // Person
+    // Person (Motion)
     if (sysState.conf > 0.3) {
       let mdx = (px - lx)/2 + (Math.random()-0.5)*0.5;
       let mdz = (pz - lz)/2 + (Math.random()-0.5)*0.5;
@@ -332,6 +367,21 @@ function processData(d){
   sysState.conf=d.confidence||0;
   sysState.nodes=d.nodes||{};
   sysState.pos=d.positions||{};
+
+  const now = Date.now();
+  const dataAge = d.server_ts ? Math.max(0, now/1000 - d.server_ts) : 0.5;
+  ['laptop','phone'].forEach(k => {
+    if (d.positions && d.positions[k]) {
+      let p = d.positions[k];
+      posTarget[k] = {
+        x: p.x + (p.vx||0) * dataAge,
+        z: p.z + (p.vz||0) * dataAge,
+        vx: p.vx||0,
+        vz: p.vz||0
+      };
+    }
+  });
+  lastFetchTime = now;
 
   const c = SCOLS[sysState.state] || '#888';
   $('hudState').style.borderColor = c;
@@ -413,7 +463,7 @@ $('btnMute').onclick=e=>{
   e.target.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
 };
 
-setInterval(poll,1000);
+setInterval(poll,500); // Polling reduced to 500ms
 poll();
 </script>
 </body>
