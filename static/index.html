@@ -3,956 +3,748 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Human WiFi Detector</title>
+<title>Wi-Fi RF Human Sensing Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0a0e1a;--surface:#0f1424;--elevated:#151b2e;
-  --text:#e0e6f0;--muted:#6b7a99;--dim:#3a4660;
+  --bg:#050810;
+  --surface:#0f1424;
+  --elevated:#151b2e;
+  --text:#e0e6f0;
+  --muted:#6b7a99;
+  --dim:#3a4660;
   --border:rgba(255,255,255,0.06);
-  --glass:rgba(255,255,255,0.03);--glass-hover:rgba(255,255,255,0.07);
-  --glass-border:rgba(255,255,255,0.08);--glass-border-hover:rgba(255,255,255,0.18);
+  --glass:rgba(255,255,255,0.03);
+  --glass-hover:rgba(255,255,255,0.07);
+  --glass-border:rgba(255,255,255,0.08);
   --font:'JetBrains Mono',monospace;
-  --cal:#888;--idle:#38A169;--watching:#D97706;
-  --activity:#E8912A;--motion:#E53E3E;--confirmed:#ff2020;
-  --laptop:#378ADD;--phone:#BA7517;--extender:#1D9E75;
+  --cal:#888;
+  --idle:#38A169;
+  --watching:#D97706;
+  --activity:#E8912A;
+  --motion:#E53E3E;
+  --confirmed:#ff2020;
+  --laptop:#378ADD;
+  --phone:#BA7517;
+  --extender:#1D9E75;
 }
 html{font-size:14px}
 body{background:var(--bg);color:var(--text);font-family:var(--font);
-  min-height:100vh;overflow-x:hidden;line-height:1.5}
+  min-height:100vh;overflow:hidden;line-height:1.5;display:flex;}
 
-/* ── Top Bar ───────────────────────────────────── */
-.topbar{position:sticky;top:0;z-index:40;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:14px 24px;gap:16px;
-  background:rgba(10,14,26,0.88);backdrop-filter:blur(20px);
-  border-bottom:1px solid var(--border)}
-.state-display{text-align:center;flex:1}
-.state-label{font-size:1.6rem;font-weight:800;letter-spacing:0.04em;transition:color 0.4s}
-.state-desc{font-size:0.68rem;color:var(--muted);margin-top:2px;transition:color 0.3s}
-.topbar-left{display:flex;align-items:center;gap:8px;min-width:140px}
-.router-badge{font-size:0.6rem;color:var(--muted);
-  background:rgba(255,255,255,0.04);padding:3px 10px;border-radius:8px;
-  border:1px solid var(--border);max-width:160px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.topbar-right{display:flex;align-items:center;gap:12px;min-width:200px;justify-content:flex-end}
-.topbar-right label{font-size:0.65rem;color:var(--muted);display:flex;align-items:center;gap:5px}
-.topbar-right input[type=range]{width:80px;accent-color:var(--idle);cursor:pointer}
-.mute-btn{background:var(--glass);border:1px solid var(--glass-border);color:var(--muted);
-  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.7rem;cursor:pointer;
-  transition:all 0.2s}
-.mute-btn:hover{background:var(--glass-hover);color:var(--text)}
-.mute-btn.active{color:var(--motion);border-color:rgba(229,62,62,0.3)}
-.sim-toggle{display:flex;align-items:center;gap:4px}
-.sim-toggle input{accent-color:var(--watching)}
-.sim-badge{font-size:0.6rem;color:var(--watching);font-weight:700;display:none}
-.sim-badge.visible{display:inline}
+/* ── Layout ── */
+#scene-col{width:55%;height:100vh;position:relative;}
+#panel-col{width:45%;height:100vh;overflow-y:auto;padding:24px;
+  display:flex;flex-direction:column;gap:16px;background:rgba(15,20,36,0.5);
+  border-left:1px solid var(--border);}
+@media(max-width:768px){
+  body{flex-direction:column;overflow-y:auto;}
+  #scene-col{width:100%;height:50vh;}
+  #panel-col{width:100%;height:auto;overflow:visible;}
+}
 
-/* ── Calibration Bar ───────────────────────────── */
-.cal-bar-wrap{overflow:hidden;transition:max-height 0.6s ease,opacity 0.4s;max-height:60px;opacity:1}
-.cal-bar-wrap.hidden{max-height:0;opacity:0}
-.cal-bar{background:var(--surface);padding:10px 24px;border-bottom:1px solid var(--border)}
-.cal-bar-inner{display:flex;align-items:center;gap:14px;max-width:960px;margin:0 auto}
-.cal-bar-track{flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden}
-.cal-bar-fill{height:100%;border-radius:3px;background:var(--cal);transition:width 0.5s ease,background 0.3s}
-.cal-bar-fill.done{background:var(--idle)}
-.cal-bar-text{font-size:0.68rem;color:var(--muted);white-space:nowrap}
-.cal-bar-text.done{color:var(--idle)}
+/* ── 3D Scene HUD ── */
+#threeCanvas{width:100%;height:100%;display:block;}
+#hudOverlay{position:absolute;top:20px;left:20px;pointer-events:none;z-index:10;}
+.hud-title{font-size:0.7rem;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;
+  display:flex;align-items:center;gap:6px;}
+.blink-dot{width:6px;height:6px;background:var(--motion);border-radius:50%;
+  animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+.hud-state{font-size:1.4rem;font-weight:800;letter-spacing:0.04em;margin-bottom:4px;
+  text-shadow:0 0 10px rgba(0,0,0,0.5);}
+.hud-conf{font-size:0.8rem;color:var(--text);font-weight:600;}
 
-/* ── Layout ────────────────────────────────────── */
-.container{max-width:960px;margin:0 auto;padding:16px 20px 48px}
-.gap{margin-bottom:16px}
+/* ── State Panel ── */
+.panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
+  padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);}
+.state-panel{display:flex;flex-direction:column;gap:8px;}
+.sp-top{display:flex;justify-content:space-between;align-items:flex-end;}
+.sp-state{font-size:1.8rem;font-weight:800;letter-spacing:0.02em;line-height:1;}
+.sp-desc{font-size:0.65rem;color:var(--muted);margin-top:4px;}
+.sp-nodes-badge{font-size:0.6rem;padding:2px 8px;background:rgba(255,255,255,0.05);
+  border-radius:6px;color:var(--muted);border:1px solid var(--border);}
+.conf-track{position:relative;height:12px;background:rgba(255,255,255,0.04);
+  border-radius:6px;overflow:hidden;margin-top:8px;}
+.conf-fill{height:100%;border-radius:6px;transition:width 0.3s ease,background 0.3s;}
+.conf-fill.green{background:var(--idle);}
+.conf-fill.amber{background:var(--activity);}
+.conf-fill.red{background:var(--motion);}
+.conf-marks{position:absolute;inset:0;display:flex;pointer-events:none;}
+.conf-mark{width:33.33%;border-right:1px solid rgba(255,255,255,0.1);height:100%;}
+.conf-mark:last-child{border:none;}
 
-/* ── 3D Radar Vision ───────────────────────────── */
-.radar-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  position:relative;overflow:hidden;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.radar-canvas-wrap{width:100%;height:420px;position:relative}
-#radarCanvas{width:100%;height:100%;display:block;border-radius:16px}
-.radar-overlay{position:absolute;bottom:12px;left:12px;right:12px;
-  display:flex;justify-content:space-between;align-items:flex-end;pointer-events:none}
-.radar-badge{font-size:0.58rem;color:var(--muted);padding:3px 8px;border-radius:6px;
-  background:rgba(10,14,26,0.7);backdrop-filter:blur(8px);border:1px solid var(--border)}
-.radar-presence{font-size:0.7rem;font-weight:700;padding:4px 12px;border-radius:8px;
-  background:rgba(10,14,26,0.8);backdrop-filter:blur(8px);border:1px solid var(--border);
-  transition:all 0.3s}
-.radar-presence.detected{color:var(--confirmed);border-color:rgba(255,32,32,0.4);
-  text-shadow:0 0 8px rgba(255,32,32,0.4)}
-.radar-presence.clear{color:var(--idle);border-color:rgba(56,161,105,0.3)}
+/* ── Node Cards ── */
+.node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
+.node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
+  padding:12px;position:relative;display:flex;flex-direction:column;gap:8px;}
+.nc-header{display:flex;justify-content:space-between;align-items:center;}
+.nc-name{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;}
+.nc-status{font-size:0.55rem;font-weight:600;padding:2px 6px;border-radius:4px;
+  background:rgba(255,255,255,0.05);}
+.nc-status.on{color:var(--idle);}
+.nc-status.off{color:var(--cal);}
+.nc-status.cal{color:var(--watching);}
+.nc-metrics{display:flex;justify-content:space-between;align-items:baseline;}
+.nc-sig{font-size:1.4rem;font-weight:800;line-height:1;}
+.nc-sig small{font-size:0.6rem;color:var(--muted);font-weight:400;}
+.nc-z{font-size:0.6rem;color:var(--muted);}
+.nc-dist{font-size:0.6rem;color:var(--text);font-weight:600;margin-top:2px;display:flex;justify-content:space-between;}
+.nc-dist span{color:var(--muted);font-weight:400;}
+.sparkline{width:100%;height:20px;margin-top:auto;}
 
-/* ── Node Cards ────────────────────────────────── */
-.node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
-.node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  overflow:hidden;position:relative;transition:all 0.3s;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.node-card:hover{background:var(--glass-hover);border-color:var(--glass-border-hover);
-  transform:translateY(-3px)}
-.node-card.motion-active{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),
-  0 0 24px rgba(229,62,62,0.1)}
-.node-bar{height:4px;width:100%}
-.node-body{padding:16px 18px 14px}
-.node-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.node-name{font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
-.online-dot{width:7px;height:7px;border-radius:50%;transition:background 0.3s}
-.online-dot.on{background:var(--idle);box-shadow:0 0 6px rgba(56,161,105,0.5)}
-.online-dot.off{background:var(--motion)}
-.node-signal{font-size:2rem;font-weight:800;text-align:center;margin-bottom:2px;letter-spacing:-0.02em}
-.node-smoothed{font-size:0.65rem;color:var(--muted);text-align:center;margin-bottom:10px}
-.node-row{display:flex;justify-content:space-between;align-items:center}
-.z-badge{font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:6px;transition:all 0.3s}
-.z-badge.green{background:rgba(56,161,105,0.12);color:var(--idle)}
-.z-badge.amber{background:rgba(217,119,6,0.12);color:var(--watching)}
-.z-badge.red{background:rgba(229,62,62,0.12);color:var(--motion)}
-.node-state{font-size:0.6rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
-.node-cal-overlay{position:absolute;inset:0;background:rgba(10,14,26,0.85);
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  border-radius:16px;z-index:3;transition:opacity 0.4s}
-.node-cal-overlay.hidden{opacity:0;pointer-events:none}
-.node-cal-overlay .cal-text{font-size:0.7rem;color:var(--cal);margin-bottom:6px}
-.node-cal-overlay .cal-progress{width:60%;height:4px;background:rgba(255,255,255,0.06);
-  border-radius:2px;overflow:hidden}
-.node-cal-overlay .cal-progress-fill{height:100%;background:var(--cal);border-radius:2px;
-  transition:width 0.3s}
-.node-offline{position:absolute;inset:0;background:rgba(229,62,62,0.1);
-  display:none;align-items:center;justify-content:center;border-radius:16px;z-index:4;
-  backdrop-filter:blur(3px)}
-.node-offline .off-text{color:var(--motion);font-weight:700;font-size:0.8rem;letter-spacing:0.1em}
-.node-offline .off-sub{color:var(--muted);font-size:0.6rem;margin-top:4px}
-.node-card.offline .node-offline{display:flex;flex-direction:column}
+/* ── Chart ── */
+.chart-panel{flex:1;min-height:160px;display:flex;flex-direction:column;}
+.chart-header{display:flex;gap:12px;margin-bottom:8px;}
+.chart-leg{font-size:0.6rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
+.chart-leg span{width:8px;height:8px;border-radius:2px;}
+.chart-wrap{flex:1;position:relative;}
 
-/* ── Confidence ────────────────────────────────── */
-.conf-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.conf-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
-.conf-title{font-size:0.72rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted)}
-.conf-source{font-size:0.65rem;color:var(--muted)}.conf-source span{font-weight:600}
-.conf-track{position:relative;height:24px;background:rgba(255,255,255,0.04);
-  border-radius:12px;overflow:hidden;margin-bottom:8px}
-.conf-fill{height:100%;border-radius:12px;transition:width 0.4s ease,background 0.3s;position:relative}
-.conf-fill.green{background:linear-gradient(90deg,rgba(56,161,105,0.4),rgba(56,161,105,0.8))}
-.conf-fill.amber{background:linear-gradient(90deg,rgba(232,145,42,0.4),rgba(232,145,42,0.9))}
-.conf-fill.red{background:linear-gradient(90deg,rgba(229,62,62,0.4),rgba(229,62,62,0.9))}
-.conf-pct{position:absolute;right:8px;top:50%;transform:translateY(-50%);
-  font-size:0.7rem;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)}
-.conf-ticks{display:flex;justify-content:space-between;font-size:0.58rem;color:var(--dim)}
-.conf-ticks span{padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.02)}
-.cooldown-note{font-size:0.62rem;color:var(--watching);margin-top:6px;display:none;font-weight:600}
-.cooldown-note.visible{display:block}
+/* ── Event Log ── */
+.log-panel{height:140px;display:flex;flex-direction:column;}
+.log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+.log-title{font-size:0.65rem;font-weight:700;color:var(--muted);letter-spacing:0.05em;}
+.btn-small{background:var(--glass);border:1px solid var(--border);color:var(--text);
+  font-family:var(--font);font-size:0.55rem;padding:2px 6px;border-radius:4px;cursor:pointer;}
+.btn-small:hover{background:var(--glass-hover);}
+.log-list{flex:1;overflow-y:auto;font-size:0.6rem;}
+.log-list::-webkit-scrollbar{width:4px;}
+.log-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+.log-entry{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);
+  color:var(--dim);font-family:var(--font);}
+.log-entry.motion{color:var(--text);}
+.le-time{color:var(--muted);}
+.le-state{font-weight:700;width:50px;}
+.le-state.ACT{color:var(--activity);}
+.le-state.MOT{color:var(--motion);}
+.le-state.CON{color:var(--confirmed);}
 
-/* ── Chart ─────────────────────────────────────── */
-.chart-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.chart-labels{display:flex;gap:16px;margin-bottom:8px}
-.chart-lbl{font-size:0.62rem;font-weight:600;display:flex;align-items:center;gap:4px}
-.chart-lbl .swatch{width:10px;height:3px;border-radius:2px}
-.chart-card canvas{width:100%!important;height:200px!important}
+/* ── Controls ── */
+.controls-bar{display:flex;align-items:center;justify-content:space-between;
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
+  padding:10px 16px;margin-top:auto;}
+.ctrl-group{display:flex;align-items:center;gap:12px;}
+.ctrl-lbl{font-size:0.6rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
+.ctrl-lbl input[type=range]{width:60px;accent-color:var(--idle);}
+.ctrl-lbl input[type=checkbox]{accent-color:var(--watching);}
+.sim-badge{color:var(--watching);font-weight:700;font-size:0.6rem;display:none;}
+.sim-badge.active{display:inline;}
+.mute-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;}
+.mute-btn.active{color:var(--motion);}
+.btn-toggle{background:var(--glass);border:1px solid var(--border);color:var(--muted);
+  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.6rem;cursor:pointer;}
+.btn-toggle.active{background:rgba(255,255,255,0.1);color:var(--text);}
 
-/* ── History Log ───────────────────────────────── */
-.log-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.log-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-.log-title{font-size:0.72rem;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:var(--muted)}
-.log-actions{display:flex;gap:6px}
-.log-actions button{background:var(--glass);border:1px solid var(--glass-border);
-  color:var(--muted);padding:3px 8px;border-radius:6px;font-family:var(--font);
-  font-size:0.6rem;cursor:pointer;transition:all 0.2s}
-.log-actions button:hover{background:var(--glass-hover);color:var(--text)}
-.log-list{max-height:200px;overflow-y:auto;font-size:0.62rem;line-height:1.8}
-.log-list::-webkit-scrollbar{width:3px}
-.log-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
-.log-entry{display:flex;align-items:center;gap:8px;padding:3px 0;
-  border-bottom:1px solid var(--border);animation:fade-in 0.3s ease}
-@keyframes fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-.log-ts{color:var(--dim);min-width:64px}
-.log-state-badge{padding:1px 6px;border-radius:4px;font-weight:700;font-size:0.58rem;
-  letter-spacing:0.04em;text-transform:uppercase}
-.log-conf-bar{width:60px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;
-  overflow:hidden;flex-shrink:0}
-.log-conf-fill{height:100%;border-radius:2px;transition:width 0.3s}
-.log-src{color:var(--muted);flex:1}
-.log-zscores{color:var(--dim);font-size:0.55rem}
-
-/* ── Offline banner ────────────────────────────── */
-.offline-banner{position:fixed;top:58px;left:50%;transform:translateX(-50%);
+.offline-banner{position:fixed;top:10px;left:50%;transform:translateX(-50%);
   background:rgba(229,62,62,0.15);border:1px solid rgba(229,62,62,0.3);
   color:var(--motion);padding:6px 18px;border-radius:10px;font-size:0.7rem;
-  font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px)}
-.offline-banner.visible{display:block;animation:slide-down 0.3s ease}
-@keyframes slide-down{from{opacity:0;transform:translateX(-50%) translateY(-8px)}
-  to{opacity:1;transform:translateX(-50%) translateY(0)}}
-
-@media(max-width:768px){
-  .topbar{flex-wrap:wrap;padding:10px 14px}
-  .topbar-left{order:2;min-width:auto}
-  .state-display{order:1;width:100%;flex:none}
-  .topbar-right{order:3;flex-wrap:wrap;justify-content:center;min-width:auto}
-  .node-grid{grid-template-columns:1fr}
-  .state-label{font-size:1.2rem}
-  .container{padding:10px 12px 40px}
-  .radar-canvas-wrap{height:280px}
-}
+  font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px);}
+.offline-banner.visible{display:block;}
 </style>
 </head>
 <body>
 
 <div class="offline-banner" id="offlineBanner">SERVER UNREACHABLE</div>
 
-<!-- TOP BAR -->
-<nav class="topbar">
-  <div class="topbar-left">
-    <div class="router-badge" id="routerBadge" title="Connected router">--</div>
+<!-- LEFT COLUMN: 3D SCENE -->
+<div id="scene-col">
+  <canvas id="threeCanvas"></canvas>
+  <div id="hudOverlay">
+    <div class="hud-title"><div class="blink-dot"></div> RF VISION ACTIVE</div>
+    <div class="hud-state" id="hudState">CALIBRATING</div>
+    <div class="hud-conf" id="hudConf">CONFIDENCE: 0%</div>
   </div>
-  <div class="state-display">
-    <div class="state-label" id="stateLabel">CALIBRATING</div>
-    <div class="state-desc" id="stateDesc">Learning your room's baseline signal...</div>
-  </div>
-  <div class="topbar-right">
-    <label>THR <span id="thrVal">2.0</span>
-      <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
-    </label>
-    <button class="mute-btn" id="muteBtn">&#128266;</button>
-    <div class="sim-toggle">
-      <label><input type="checkbox" id="simToggle"> SIM</label>
-      <span class="sim-badge" id="simBadge">[SIM]</span>
-    </div>
-  </div>
-</nav>
-
-<!-- CALIBRATION BAR -->
-<div class="cal-bar-wrap" id="calBarWrap">
-  <div class="cal-bar"><div class="cal-bar-inner">
-    <div class="cal-bar-text" id="calText">Calibrating... 20s remaining</div>
-    <div class="cal-bar-track"><div class="cal-bar-fill" id="calFill" style="width:0%"></div></div>
-  </div></div>
 </div>
 
-<main class="container">
-
-  <!-- 3D RADAR VISION -->
-  <section class="radar-card gap">
-    <div class="radar-canvas-wrap">
-      <canvas id="radarCanvas"></canvas>
-      <div class="radar-overlay">
-        <div class="radar-badge" id="radarMode">3D RADAR VISION</div>
-        <div class="radar-presence clear" id="radarPresence">NO PRESENCE</div>
+<!-- RIGHT COLUMN: PANELS -->
+<div id="panel-col">
+  
+  <!-- STATE -->
+  <div class="panel state-panel">
+    <div class="sp-top">
+      <div>
+        <div class="sp-state" id="spState">CALIBRATING</div>
+        <div class="sp-desc" id="spDesc">Learning baseline signal...</div>
       </div>
-    </div>
-  </section>
-
-  <!-- NODE CARDS -->
-  <section class="node-grid gap">
-    <article class="node-card" id="card-extender">
-      <div class="node-bar" style="background:var(--extender)"></div>
-      <div class="node-body">
-        <div class="node-header"><span class="node-name" style="color:var(--extender)">Extender</span>
-          <div class="online-dot on" id="dot-extender"></div></div>
-        <div class="node-signal" id="sig-extender">--</div>
-        <div class="node-smoothed">Smoothed: <span id="smooth-extender">--</span></div>
-        <div class="node-row"><span class="z-badge green" id="zbadge-extender">z: 0.00</span>
-          <span class="node-state" id="nstate-extender" style="color:var(--idle)">IDLE</span></div>
-      </div>
-      <div class="node-cal-overlay" id="cal-extender"><div class="cal-text">Calibrating...</div>
-        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-extender" style="width:0%"></div></div></div>
-      <div class="node-offline"><div class="off-text">OFFLINE</div><div class="off-sub" id="lastseen-extender">--</div></div>
-    </article>
-    <article class="node-card" id="card-laptop">
-      <div class="node-bar" style="background:var(--laptop)"></div>
-      <div class="node-body">
-        <div class="node-header"><span class="node-name" style="color:var(--laptop)">Laptop</span>
-          <div class="online-dot on" id="dot-laptop"></div></div>
-        <div class="node-signal" id="sig-laptop">--</div>
-        <div class="node-smoothed">Smoothed: <span id="smooth-laptop">--</span></div>
-        <div class="node-row"><span class="z-badge green" id="zbadge-laptop">z: 0.00</span>
-          <span class="node-state" id="nstate-laptop" style="color:var(--idle)">IDLE</span></div>
-      </div>
-      <div class="node-cal-overlay" id="cal-laptop"><div class="cal-text">Calibrating...</div>
-        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-laptop" style="width:0%"></div></div></div>
-      <div class="node-offline"><div class="off-text">OFFLINE</div><div class="off-sub" id="lastseen-laptop">--</div></div>
-    </article>
-    <article class="node-card" id="card-phone">
-      <div class="node-bar" style="background:var(--phone)"></div>
-      <div class="node-body">
-        <div class="node-header"><span class="node-name" style="color:var(--phone)">Phone</span>
-          <div class="online-dot on" id="dot-phone"></div></div>
-        <div class="node-signal" id="sig-phone">--</div>
-        <div class="node-smoothed">Smoothed: <span id="smooth-phone">--</span></div>
-        <div class="node-row"><span class="z-badge green" id="zbadge-phone">z: 0.00</span>
-          <span class="node-state" id="nstate-phone" style="color:var(--idle)">IDLE</span></div>
-      </div>
-      <div class="node-cal-overlay" id="cal-phone"><div class="cal-text">Calibrating...</div>
-        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-phone" style="width:0%"></div></div></div>
-      <div class="node-offline"><div class="off-text">OFFLINE</div><div class="off-sub" id="lastseen-phone">--</div></div>
-    </article>
-  </section>
-
-  <!-- CONFIDENCE -->
-  <section class="conf-card gap">
-    <div class="conf-header">
-      <div class="conf-title">Confidence</div>
-      <div class="conf-source">Triggered by: <span id="confSource">none</span></div>
+      <div class="sp-nodes-badge" id="spNodes">0 ACTIVE NODES</div>
     </div>
     <div class="conf-track">
-      <div class="conf-fill green" id="confFill" style="width:0%">
-        <span class="conf-pct" id="confPct">0%</span>
+      <div class="conf-marks">
+        <div class="conf-mark"></div><div class="conf-mark"></div><div class="conf-mark"></div>
       </div>
+      <div class="conf-fill green" id="spConfFill" style="width:0%"></div>
     </div>
-    <div class="conf-ticks">
-      <span>0</span><span>Activity (0.25)</span><span>Motion (0.65)</span><span>Confirmed (1.0)</span>
+  </div>
+
+  <!-- NODE CARDS -->
+  <div class="node-grid">
+    <div class="node-card" style="border-top:2px solid var(--laptop)">
+      <div class="nc-header">
+        <span class="nc-name" style="color:var(--laptop)">Laptop</span>
+        <span class="nc-status cal" id="ns-laptop">CAL</span>
+      </div>
+      <div class="nc-metrics">
+        <span class="nc-sig" id="sig-laptop">--<small>%</small></span>
+        <span class="nc-z" id="z-laptop">z: --</span>
+      </div>
+      <div class="nc-dist">Dist: <span id="dist-laptop">-- m</span></div>
+      <canvas class="sparkline" id="spark-laptop"></canvas>
     </div>
-    <div class="cooldown-note" id="cooldownNote">Re-arming...</div>
-  </section>
+    <div class="node-card" style="border-top:2px solid var(--phone)">
+      <div class="nc-header">
+        <span class="nc-name" style="color:var(--phone)">Phone</span>
+        <span class="nc-status cal" id="ns-phone">CAL</span>
+      </div>
+      <div class="nc-metrics">
+        <span class="nc-sig" id="sig-phone">--<small>%</small></span>
+        <span class="nc-z" id="z-phone">z: --</span>
+      </div>
+      <div class="nc-dist">Dist: <span id="dist-phone">-- m</span></div>
+      <canvas class="sparkline" id="spark-phone"></canvas>
+    </div>
+    <div class="node-card" style="border-top:2px solid var(--extender)">
+      <div class="nc-header">
+        <span class="nc-name" style="color:var(--extender)">Extender</span>
+        <span class="nc-status cal" id="ns-extender">CAL</span>
+      </div>
+      <div class="nc-metrics">
+        <span class="nc-sig" id="sig-extender">--<small>%</small></span>
+        <span class="nc-z" id="z-extender">z: --</span>
+      </div>
+      <div class="nc-dist">Origin <span id="dist-extender">0.0 m</span></div>
+      <canvas class="sparkline" id="spark-extender"></canvas>
+    </div>
+  </div>
 
   <!-- CHART -->
-  <section class="chart-card gap">
-    <div class="chart-labels">
-      <div class="chart-lbl"><span class="swatch" style="background:var(--laptop)"></span> Laptop</div>
-      <div class="chart-lbl"><span class="swatch" style="background:var(--phone)"></span> Phone</div>
-      <div class="chart-lbl"><span class="swatch" style="background:var(--extender)"></span> Extender</div>
+  <div class="panel chart-panel">
+    <div class="chart-header">
+      <div class="chart-leg"><span style="background:var(--laptop)"></span> Laptop</div>
+      <div class="chart-leg"><span style="background:var(--phone)"></span> Phone</div>
+      <div class="chart-leg"><span style="background:var(--extender)"></span> Extender</div>
     </div>
-    <canvas id="signalChart"></canvas>
-  </section>
+    <div class="chart-wrap">
+      <canvas id="mainChart"></canvas>
+    </div>
+  </div>
 
-  <!-- HISTORY LOG -->
-  <section class="log-card">
+  <!-- LOG -->
+  <div class="panel log-panel">
     <div class="log-header">
-      <div class="log-title">Event History</div>
-      <div class="log-actions">
-        <button id="clearHist">CLEAR</button>
-        <button id="exportCsv">EXPORT CSV</button>
-      </div>
+      <div class="log-title">EVENT LOG</div>
+      <button class="btn-small" id="btnExport">EXPORT CSV</button>
     </div>
     <div class="log-list" id="logList"></div>
-  </section>
+  </div>
 
-</main>
+  <!-- CONTROLS -->
+  <div class="controls-bar">
+    <div class="ctrl-group">
+      <label class="ctrl-lbl">THR <span id="thrVal">2.0</span>
+        <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
+      </label>
+      <button class="btn-toggle active" id="btnRotate">ROTATE</button>
+    </div>
+    <div class="ctrl-group">
+      <label class="ctrl-lbl">
+        <input type="checkbox" id="simToggle"> SIM MODE
+      </label>
+      <span class="sim-badge" id="simBadge">[SIM]</span>
+      <button class="mute-btn" id="btnMute">&#128266;</button>
+    </div>
+  </div>
+
+</div>
 
 <script>
-// ═══════════════════════════════════════════════════════
-// CONSTANTS & STATE
-// ═══════════════════════════════════════════════════════
-const KEYS=['extender','laptop','phone'];
-const NCOL={extender:'#1D9E75',laptop:'#378ADD',phone:'#BA7517'};
-const SCOL={CALIBRATING:'#888',IDLE:'#38A169',WATCHING:'#D97706',
-            ACTIVITY:'#E8912A',MOTION:'#E53E3E',CONFIRMED:'#ff2020'};
-const SDESC={
-  CALIBRATING:"Learning your room's baseline signal...",
+const $=id=>document.getElementById(id);
+const KEYS = ['laptop','phone','extender'];
+const COLS = {laptop:0x378ADD, phone:0xBA7517, extender:0x1D9E75, router:0x534AB7};
+const SCOLS = {CALIBRATING:'#888',IDLE:'#38A169',WATCHING:'#D97706',ACTIVITY:'#E8912A',MOTION:'#E53E3E',CONFIRMED:'#ff2020'};
+const SDESC = {
+  CALIBRATING:"Learning baseline signal...",
   IDLE:"No movement detected. All clear.",
-  WATCHING:"Signal fluctuation noticed. Monitoring...",
+  WATCHING:"Signal fluctuation noticed.",
   ACTIVITY:"Activity detected on one sensor.",
   MOTION:"Motion confirmed on multiple sensors.",
   CONFIRMED:"Strong motion -- all sensors agree."
 };
-const NWEIGHTS={laptop:0.40,phone:0.35,extender:0.25};
-const MAX_H=60;
 
-let muted=false,simMode=false,failStrikes=0;
-let lastState='',calDone=false;
-let history={extender:[],laptop:[],phone:[]};
-let timeLabels=[];
-let events=[];
-
-// Radar data bridge
-let radarData={confidence:0,motion:false,state:'CALIBRATING',
-  nodes:{extender:{signal:0,motion:false},laptop:{signal:0,motion:false},phone:{signal:0,motion:false}}};
-
-// Sim state
-let simTick=0,simBursting=false,simBurstStart=0;
-let simWin={extender:[],laptop:[],phone:[]};
-let simEma={extender:null,laptop:null,phone:null};
-let simConsec={extender:0,laptop:0,phone:0};
-let simCalCount={extender:0,laptop:0,phone:0};
-let simBaseline={extender:{m:0,s:1},laptop:{m:0,s:1},phone:{m:0,s:1}};
-let simCalBuf={extender:[],laptop:[],phone:[]};
+let sysState={state:'CALIBRATING',conf:0,nodes:{},pos:{}};
+let history={laptop:[],phone:[],extender:[]};
+let sparkH={laptop:[],phone:[],extender:[]};
+let logEvents=[];
+let muted=false, simMode=false, autoRotate=true;
+let failStrikes=0;
 
 // Audio
-let audioCtx=null;
-function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx}
-function beep(freq,dur=80){
+let actx=null;
+function beep(f,d=80){
   if(muted)return;
-  try{const c=getAudio(),o=c.createOscillator(),g=c.createGain();
-    o.type='sine';o.frequency.value=freq;g.gain.value=0.06;
-    o.connect(g);g.connect(c.destination);o.start();
-    g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+dur/1000);
-    o.stop(c.currentTime+dur/1000+0.05)}catch(e){}}
-function confirmedBeep(){beep(330,80);setTimeout(()=>beep(440,80),120);setTimeout(()=>beep(550,80),240)}
+  if(!actx)actx=new(window.AudioContext||window.webkitAudioContext)();
+  try{const o=actx.createOscillator(),g=actx.createGain();
+    o.type='sine';o.frequency.value=f;g.gain.value=0.05;
+    o.connect(g);g.connect(actx.destination);o.start();
+    g.gain.exponentialRampToValueAtTime(0.001,actx.currentTime+d/1000);
+    o.stop(actx.currentTime+d/1000+0.05)}catch(e){}
+}
 
-// ═══════════════════════════════════════════════════════
-// 3D RADAR VISION (Three.js)
-// ═══════════════════════════════════════════════════════
-const radarCanvas=document.getElementById('radarCanvas');
-let scene,camera,renderer,radarClock;
-let nodeBeacons={},radarRings=[],humanGroup,humanGlow;
-let roomWireframe,gridFloor;
+// ── 3D SCENE ──
+let scene,camera,renderer,clock;
+let spheres={}, ringsPool=[], links={}, personZone, personLabel;
+let isDragging=false, dragTimer=0;
 
-function initRadar(){
+function createTextSprite(msg, color){
+  const canvas=document.createElement('canvas');
+  canvas.width=256;canvas.height=64;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle=color;
+  ctx.font='bold 24px "JetBrains Mono", monospace';
+  ctx.textAlign='center';
+  ctx.fillText(msg,128,40);
+  const tex=new THREE.CanvasTexture(canvas);
+  const mat=new THREE.SpriteMaterial({map:tex,transparent:true});
+  const sprite=new THREE.Sprite(mat);
+  sprite.scale.set(4,1,1);
+  return sprite;
+}
+
+function init3D(){
+  const container=$('scene-col');
   scene=new THREE.Scene();
-  scene.fog=new THREE.FogExp2(0x0a0e1a,0.035);
+  scene.background=new THREE.Color(0x050810);
+  
+  camera=new THREE.PerspectiveCamera(50,container.clientWidth/container.clientHeight,0.1,100);
+  camera.position.set(8,5,8);
+  camera.lookAt(0,-1,0);
 
-  const w=radarCanvas.clientWidth,h=radarCanvas.clientHeight;
-  camera=new THREE.PerspectiveCamera(50,w/h,0.1,200);
-  camera.position.set(0,12,18);
-  camera.lookAt(0,1,0);
-
-  renderer=new THREE.WebGLRenderer({canvas:radarCanvas,antialias:true,alpha:true});
-  renderer.setSize(w,h);
+  renderer=new THREE.WebGLRenderer({canvas:$('threeCanvas'),antialias:true});
+  renderer.setSize(container.clientWidth,container.clientHeight);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-  renderer.setClearColor(0x0a0e1a,1);
 
-  radarClock=new THREE.Clock();
+  clock=new THREE.Clock();
 
-  // Ambient light
-  scene.add(new THREE.AmbientLight(0x1a2a4a,0.4));
+  scene.add(new THREE.AmbientLight(0x1a2a4a,1.5));
+  const pl=new THREE.PointLight(0xffffff,0.5);
+  pl.position.set(0,10,0);
+  scene.add(pl);
 
-  // Room wireframe (first floor box)
-  const roomGeo=new THREE.BoxGeometry(20,5,12);
-  const roomEdges=new THREE.EdgesGeometry(roomGeo);
-  roomWireframe=new THREE.LineSegments(roomEdges,
-    new THREE.LineBasicMaterial({color:0x1D9E75,opacity:0.15,transparent:true}));
-  roomWireframe.position.y=2.5;
-  scene.add(roomWireframe);
+  // Floors
+  const gGeo=new THREE.PlaneGeometry(20,20);
+  const gMat=new THREE.MeshBasicMaterial({color:0x333333,transparent:true,opacity:0.3,side:THREE.DoubleSide});
+  const gFloor=new THREE.Mesh(gGeo,gMat);
+  gFloor.rotation.x=Math.PI/2;
+  gFloor.position.y=-4;
+  scene.add(gFloor);
+  const gL=createTextSprite("GROUND FLOOR","#888888");
+  gL.position.set(0,-3.8,-4);
+  scene.add(gL);
 
-  // Grid floor
-  const gridGeo=new THREE.PlaneGeometry(20,12,20,12);
-  gridFloor=new THREE.GridHelper(20,20,0x1D9E75,0x0f1424);
-  gridFloor.material.opacity=0.2;
-  gridFloor.material.transparent=true;
-  scene.add(gridFloor);
+  const fMat=new THREE.MeshBasicMaterial({color:0x1a3a6a,transparent:true,opacity:0.25,side:THREE.DoubleSide});
+  const fFloor=new THREE.Mesh(gGeo,fMat);
+  fFloor.rotation.x=Math.PI/2;
+  fFloor.position.y=0;
+  scene.add(fFloor);
+  const fL=createTextSprite("1ST FLOOR","#88aaee");
+  fL.position.set(0,0.2,-4);
+  scene.add(fL);
 
-  // Floor tiles (RuView-style dot grid)
-  const tileMat=new THREE.MeshBasicMaterial({color:0x1D9E75,opacity:0.12,transparent:true});
-  for(let x=-9;x<=9;x+=1.5){
-    for(let z=-5;z<=5;z+=1.5){
-      const tile=new THREE.Mesh(new THREE.PlaneGeometry(0.35,0.35),tileMat.clone());
-      tile.rotation.x=-Math.PI/2;
-      tile.position.set(x,0.01,z);
-      scene.add(tile);
-    }
+  // Nodes
+  spheres.extender = makeNode(0x1D9E75, 0.25, "EXTENDER", true);
+  spheres.router   = makeNode(0x534AB7, 0.25, "ROUTER", false);
+  spheres.laptop   = makeNode(0x378ADD, 0.22, "LAPTOP", false);
+  spheres.phone    = makeNode(0xBA7517, 0.20, "PHONE", false);
+
+  // Router line
+  const rlGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-4,0),new THREE.Vector3(0,0,0)]);
+  const rlMat=new THREE.LineDashedMaterial({color:0x534AB7,dashSize:0.2,gapSize:0.1});
+  const rLine=new THREE.Line(rlGeo,rlMat);
+  rLine.computeLineDistances();
+  scene.add(rLine);
+
+  // Link lines
+  links.ext_lap = makeLink();
+  links.ext_phn = makeLink();
+
+  // Dist rings
+  spheres.laptop.dRing=makeDistRing(0x378ADD);
+  spheres.phone.dRing=makeDistRing(0xBA7517);
+
+  // Person Zone
+  const pzGeo=new THREE.IcosahedronGeometry(1,2);
+  const pzMat=new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:0,wireframe:true});
+  personZone=new THREE.Mesh(pzGeo,pzMat);
+  scene.add(personZone);
+  personLabel=createTextSprite("PERSON?","#ff4444");
+  personLabel.visible=false;
+  scene.add(personLabel);
+
+  // Rings pool
+  for(let i=0;i<15;i++){
+    const rg=new THREE.TorusGeometry(1,0.02,4,32);
+    const rm=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0});
+    const r=new THREE.Mesh(rg,rm);
+    r.rotation.x=Math.PI/2;
+    r.userData={active:false,t:0};
+    scene.add(r);
+    ringsPool.push(r);
   }
 
-  // Node beacons (3 pillars at floor-1 positions)
-  const beaconPositions={extender:{x:-7,z:0,color:0x1D9E75},
-    laptop:{x:0,z:0,color:0x378ADD},phone:{x:7,z:0,color:0xBA7517}};
-
-  KEYS.forEach(k=>{
-    const bp=beaconPositions[k];
-    const g=new THREE.Group();
-
-    // Base pillar
-    const pillarGeo=new THREE.CylinderGeometry(0.12,0.15,0.5,8);
-    const pillarMat=new THREE.MeshBasicMaterial({color:bp.color,opacity:0.6,transparent:true});
-    const pillar=new THREE.Mesh(pillarGeo,pillarMat);
-    pillar.position.y=0.25;
-    g.add(pillar);
-
-    // Beacon sphere
-    const sphereGeo=new THREE.SphereGeometry(0.25,16,16);
-    const sphereMat=new THREE.MeshBasicMaterial({color:bp.color,opacity:0.5,transparent:true});
-    const sphere=new THREE.Mesh(sphereGeo,sphereMat);
-    sphere.position.y=0.65;
-    g.add(sphere);
-
-    // Glow point light
-    const light=new THREE.PointLight(bp.color,0.4,8);
-    light.position.y=0.65;
-    g.add(light);
-
-    // Signal rings (expanding outward)
-    const rings=[];
-    for(let i=0;i<3;i++){
-      const ringGeo=new THREE.RingGeometry(0.5+i*1.2,0.55+i*1.2,32);
-      const ringMat=new THREE.MeshBasicMaterial({color:bp.color,side:THREE.DoubleSide,
-        opacity:0.15,transparent:true});
-      const ring=new THREE.Mesh(ringGeo,ringMat);
-      ring.rotation.x=-Math.PI/2;
-      ring.position.y=0.3;
-      ring.userData={baseRadius:0.5+i*1.2,phase:i*0.7};
-      g.add(ring);
-      rings.push(ring);
+  // Interaction
+  let isDown=false;
+  renderer.domElement.addEventListener('pointerdown',()=>{isDown=true;isDragging=true;});
+  renderer.domElement.addEventListener('pointerup',()=>{isDown=false;dragTimer=3.0;});
+  renderer.domElement.addEventListener('pointermove',(e)=>{
+    if(isDown){
+      camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-e.movementX*0.01);
+      camera.position.y+=e.movementY*0.02;
+      camera.lookAt(0,-1,0);
     }
-
-    g.position.set(bp.x,0,bp.z);
-    scene.add(g);
-    nodeBeacons[k]={group:g,sphere,light,rings,mat:sphereMat,pillarMat,color:bp.color};
   });
 
-  // Link lines between nodes (dashed)
-  const linkPairs=[['extender','laptop'],['laptop','phone'],['extender','phone']];
-  linkPairs.forEach(([a,b])=>{
-    const pa=beaconPositions[a],pb=beaconPositions[b];
-    const pts=[new THREE.Vector3(pa.x,0.3,pa.z),new THREE.Vector3(pb.x,0.3,pb.z)];
-    const geo=new THREE.BufferGeometry().setFromPoints(pts);
-    const mat=new THREE.LineDashedMaterial({color:0x1D9E75,opacity:0.1,transparent:true,
-      dashSize:0.4,gapSize:0.3});
-    const line=new THREE.Line(geo,mat);
-    line.computeLineDistances();
-    scene.add(line);
+  window.addEventListener('resize',()=>{
+    camera.aspect=container.clientWidth/container.clientHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(container.clientWidth,container.clientHeight);
   });
 
-  // Wireframe dome (observatory hemisphere)
-  const domeGeo=new THREE.SphereGeometry(9,24,12,0,Math.PI*2,0,Math.PI/2);
-  const domeWire=new THREE.WireframeGeometry(domeGeo);
-  const dome=new THREE.LineSegments(domeWire,
-    new THREE.LineBasicMaterial({color:0x378ADD,opacity:0.04,transparent:true}));
-  dome.position.y=0;
-  scene.add(dome);
+  requestAnimationFrame(render3D);
+  setInterval(emitRings, 2000);
+}
 
-  // Human silhouette group (centered, appears on motion)
-  humanGroup=new THREE.Group();
-  humanGroup.position.set(0,0,0);
-  humanGroup.visible=false;
-
-  // Body (capsule approximation)
-  const bodyGeo=new THREE.CylinderGeometry(0.3,0.25,1.6,8);
-  const bodyMat=new THREE.MeshBasicMaterial({color:0x00ff88,opacity:0.0,transparent:true,
-    wireframe:true});
-  const body=new THREE.Mesh(bodyGeo,bodyMat);
-  body.position.y=1.8;
-  humanGroup.add(body);
-
-  // Head
-  const headGeo=new THREE.SphereGeometry(0.25,12,12);
-  const headMat=new THREE.MeshBasicMaterial({color:0x00ff88,opacity:0.0,transparent:true,
-    wireframe:true});
-  const head=new THREE.Mesh(headGeo,headMat);
-  head.position.y=2.85;
-  humanGroup.add(head);
-
-  // Glow cylinder behind human
-  const glowGeo=new THREE.CylinderGeometry(0.5,0.5,3,16,1,true);
-  const glowMat=new THREE.MeshBasicMaterial({color:0x00ffaa,opacity:0.0,transparent:true,
-    side:THREE.DoubleSide});
-  humanGlow=new THREE.Mesh(glowGeo,glowMat);
-  humanGlow.position.y=1.5;
-  humanGroup.add(humanGlow);
-
-  // Ground ring under human
-  const groundRingGeo=new THREE.RingGeometry(0.4,0.8,32);
-  const groundRingMat=new THREE.MeshBasicMaterial({color:0x00ffaa,opacity:0.0,transparent:true,
-    side:THREE.DoubleSide});
-  const groundRing=new THREE.Mesh(groundRingGeo,groundRingMat);
-  groundRing.rotation.x=-Math.PI/2;
-  groundRing.position.y=0.02;
-  humanGroup.add(groundRing);
-
-  humanGroup.userData={bodyMat,headMat,glowMat,groundRingMat,targetOpacity:0};
-  scene.add(humanGroup);
-
-  // Radar sweep rings (expanding from center)
-  for(let i=0;i<4;i++){
-    const rg=new THREE.RingGeometry(1+i*2.5,1.08+i*2.5,64);
-    const rm=new THREE.MeshBasicMaterial({color:0x1D9E75,side:THREE.DoubleSide,
-      opacity:0,transparent:true});
-    const ring=new THREE.Mesh(rg,rm);
-    ring.rotation.x=-Math.PI/2;
-    ring.position.y=0.02;
-    ring.userData={phase:i*1.5,speed:0.8};
-    scene.add(ring);
-    radarRings.push(ring);
+function makeNode(color, r, labelText, hasTorus){
+  const g=new THREE.Group();
+  const geo=new THREE.SphereGeometry(r,16,16);
+  const mat=new THREE.MeshBasicMaterial({color:color});
+  const mesh=new THREE.Mesh(geo,mat);
+  g.add(mesh);
+  
+  const light=new THREE.PointLight(color,0,5);
+  g.add(light);
+  
+  if(hasTorus){
+    const tg=new THREE.TorusGeometry(r*1.5,0.02,8,32);
+    const tm=new THREE.MeshBasicMaterial({color:color,wireframe:true});
+    const tMesh=new THREE.Mesh(tg,tm);
+    tMesh.rotation.x=Math.PI/2;
+    g.add(tMesh);
+    g.userData.torus=tMesh;
   }
+  
+  const lbl=createTextSprite(labelText, '#ffffff');
+  lbl.position.y=r+0.3;
+  g.add(lbl);
 
-  window.addEventListener('resize',onRadarResize);
-  animateRadar();
+  g.userData={mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3()};
+  scene.add(g);
+  return g;
 }
 
-function onRadarResize(){
-  const w=radarCanvas.clientWidth,h=radarCanvas.clientHeight;
-  camera.aspect=w/h;
-  camera.updateProjectionMatrix();
-  renderer.setSize(w,h);
+function makeLink(){
+  const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const mat=new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.2});
+  const line=new THREE.Line(geo,mat);
+  scene.add(line);
+  return line;
 }
 
-function animateRadar(){
-  requestAnimationFrame(animateRadar);
-  const t=radarClock.getElapsedTime();
-  const conf=radarData.confidence;
-  const isMotion=radarData.motion;
+function makeDistRing(color){
+  const geo=new THREE.RingGeometry(0.95,1.05,64);
+  const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.2,side:THREE.DoubleSide});
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.rotation.x=Math.PI/2;
+  mesh.position.y=0.01;
+  scene.add(mesh);
+  return mesh;
+}
 
-  // Slow camera orbit
-  camera.position.x=Math.sin(t*0.1)*16;
-  camera.position.z=Math.cos(t*0.1)*16;
-  camera.position.y=10+Math.sin(t*0.15)*2;
-  camera.lookAt(0,1.5,0);
-
-  // Room wireframe pulse
-  roomWireframe.material.opacity=0.1+Math.sin(t*0.5)*0.03;
-
-  // Node beacon animations
+function emitRings(){
+  const n=sysState.nodes;
+  if(!n)return;
   KEYS.forEach(k=>{
-    const b=nodeBeacons[k];
-    const nd=radarData.nodes[k]||{};
-    const sig=(nd.signal||0)/100;
-    const mot=nd.motion;
-
-    // Beacon brightness based on signal
-    b.mat.opacity=0.3+sig*0.5;
-    b.light.intensity=0.2+sig*0.6;
-
-    // Pulse on motion
-    if(mot){
-      const pulse=0.3+Math.sin(t*6)*0.15;
-      b.mat.opacity=pulse+0.5;
-      b.sphere.scale.setScalar(1+Math.sin(t*4)*0.15);
-      b.light.intensity=1.0+Math.sin(t*5)*0.5;
-      b.light.color.setHex(0xff4444);
-    }else{
-      b.sphere.scale.setScalar(1);
-      b.light.color.setHex(b.color);
+    if(n[k]&&n[k].online){
+      spawnRing(k,n[k].motion);
+      if(n[k].motion) setTimeout(()=>spawnRing(k,true),1000); // double fast
     }
+  });
+}
 
-    // Expanding signal rings
-    b.rings.forEach(r=>{
-      const phase=r.userData.phase;
-      const cycle=(t*0.8+phase)%3;
-      const scale=1+cycle*1.5;
-      r.scale.setScalar(scale);
-      r.material.opacity=mot?Math.max(0,(1-cycle/3)*0.25):Math.max(0,(1-cycle/3)*0.08);
-    });
+function spawnRing(key, isMotion){
+  const r=ringsPool.find(x=>!x.userData.active);
+  if(r){
+    r.userData.active=true;
+    r.userData.t=0;
+    r.userData.isMotion=isMotion;
+    r.position.copy(spheres[key].position);
+    r.material.color.setHex(isMotion?0xff4444:COLS[key]);
+  }
+}
+
+function render3D(){
+  requestAnimationFrame(render3D);
+  const dt=clock.getDelta();
+  const t=clock.getElapsedTime();
+
+  // Auto rotate
+  if(!isDragging && autoRotate){
+    camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.002);
+    camera.lookAt(0,-1,0);
+  }
+  if(dragTimer>0){dragTimer-=dt; if(dragTimer<=0)isDragging=false;}
+
+  // Extender Torus
+  if(spheres.extender.userData.torus) spheres.extender.userData.torus.rotation.z-=0.5*dt;
+
+  const n=sysState.nodes||{};
+  const pos=sysState.pos||{};
+
+  // Update nodes
+  ['extender','router','laptop','phone'].forEach(k=>{
+    const s=spheres[k];
+    if(pos[k]){
+      s.userData.targetPos.set(pos[k].x,pos[k].y,pos[k].z);
+      s.position.lerp(s.userData.targetPos, 0.05);
+    }
+    
+    if(k==='laptop'||k==='phone'){
+      const nd=n[k]||{};
+      if(!nd.online){
+        s.userData.mat.color.setHex(0x555555);
+        s.userData.mesh.scale.setScalar(0.5);
+        s.userData.light.intensity=0;
+      }else if(!nd.calibrated){
+        s.userData.mat.wireframe=true;
+        s.userData.mat.color.setHex(COLS[k]);
+      }else{
+        s.userData.mat.wireframe=false;
+        s.userData.mat.color.setHex(COLS[k]);
+        if(nd.motion){
+          const scale=1+Math.sin(t*10)*0.2;
+          s.userData.mesh.scale.setScalar(scale);
+          s.userData.light.intensity=1;
+        }else{
+          s.userData.mesh.scale.setScalar(1);
+          s.userData.light.intensity=0;
+        }
+      }
+      
+      // Dist rings
+      if(s.dRing && pos[k]){
+        const d=pos[k].distance_from_extender||0;
+        s.dRing.scale.setScalar(d||0.001);
+      }
+    }
   });
 
-  // Radar sweep rings
-  radarRings.forEach(r=>{
-    const phase=r.userData.phase;
-    const cycle=(t*r.userData.speed+phase)%6;
-    const scale=0.5+cycle*1.8;
-    r.scale.setScalar(scale);
-    const baseOp=isMotion?0.12:0.04;
-    r.material.opacity=Math.max(0,(1-cycle/6)*baseOp);
-    r.material.color.setHex(isMotion?0xff4444:0x1D9E75);
+  // Links
+  if(pos.laptop) updateLink(links.ext_lap, spheres.extender.position, spheres.laptop.position, n.extender, n.laptop);
+  if(pos.phone) updateLink(links.ext_phn, spheres.extender.position, spheres.phone.position, n.extender, n.phone);
+
+  // Rings
+  ringsPool.forEach(r=>{
+    if(r.userData.active){
+      r.userData.t+=dt*(r.userData.isMotion?2.0:1.0);
+      if(r.userData.t>1.5){
+        r.userData.active=false;
+        r.material.opacity=0;
+      }else{
+        const prog=r.userData.t/1.5;
+        r.scale.setScalar(prog*6);
+        r.material.opacity=(1-prog)*(r.userData.isMotion?0.8:0.4);
+      }
+    }
   });
 
-  // Human silhouette
-  const hud=humanGroup.userData;
-  hud.targetOpacity=isMotion?Math.min(0.7,0.3+conf*0.6):0;
-  const currentOp=hud.bodyMat.opacity;
-  const lerpOp=currentOp+(hud.targetOpacity-currentOp)*0.05;
-
-  humanGroup.visible=lerpOp>0.01;
-  hud.bodyMat.opacity=lerpOp;
-  hud.headMat.opacity=lerpOp;
-  hud.glowMat.opacity=lerpOp*0.3;
-  hud.groundRingMat.opacity=lerpOp*0.5;
-
-  // Human color: green=idle, cyan=activity, red=confirmed
-  const hColor=conf>=0.65?0xff2020:conf>=0.25?0x00ccff:0x00ff88;
-  hud.bodyMat.color.setHex(hColor);
-  hud.headMat.color.setHex(hColor);
-  hud.glowMat.color.setHex(hColor);
-  hud.groundRingMat.color.setHex(hColor);
-
-  // Human breathing animation
-  if(humanGroup.visible){
-    humanGroup.children[0].scale.x=1+Math.sin(t*1.5)*0.03;
-    humanGroup.children[0].scale.z=1+Math.sin(t*1.5)*0.03;
-    humanGlow.scale.x=1+Math.sin(t*2)*0.1;
-    humanGlow.scale.z=1+Math.sin(t*2)*0.1;
+  // Person Zone
+  const conf=sysState.conf||0;
+  if(conf>0 && spheres.laptop && spheres.phone){
+    const center=new THREE.Vector3().addVectors(spheres.laptop.position, spheres.phone.position).multiplyScalar(0.5);
+    personZone.position.copy(center);
+    const r=Math.max(0.1, conf*3);
+    personZone.scale.setScalar(r);
+    personZone.material.opacity=conf*0.15;
+    
+    personLabel.visible=(conf>=0.5);
+    if(personLabel.visible){
+      personLabel.position.copy(center);
+      personLabel.position.y+=r+0.5;
+    }
+  }else{
+    personZone.material.opacity=0;
+    personLabel.visible=false;
   }
 
   renderer.render(scene,camera);
 }
 
-function updateRadar(data){
-  radarData.confidence=data.confidence||0;
-  radarData.motion=data.motion||false;
-  radarData.state=data.state||'IDLE';
-  if(data.nodes){
-    KEYS.forEach(k=>{
-      if(data.nodes[k])radarData.nodes[k]=data.nodes[k];
-    });
-  }
-  // Update presence badge
-  const pEl=document.getElementById('radarPresence');
-  if(radarData.motion){
-    pEl.textContent=radarData.state==='CONFIRMED'?'PRESENCE CONFIRMED':
-      radarData.state==='MOTION'?'MOTION DETECTED':'ACTIVITY DETECTED';
-    pEl.className='radar-presence detected';
-  }else{
-    pEl.textContent=radarData.state==='CALIBRATING'?'CALIBRATING':'NO PRESENCE';
-    pEl.className='radar-presence clear';
-  }
+function updateLink(line, p1, p2, n1, n2){
+  const pts=line.geometry.attributes.position.array;
+  pts[0]=p1.x; pts[1]=p1.y; pts[2]=p1.z;
+  pts[3]=p2.x; pts[4]=p2.y; pts[5]=p2.z;
+  line.geometry.attributes.position.needsUpdate=true;
+  
+  if(!n1||!n2){line.material.opacity=0;return;}
+  line.material.opacity=Math.max((n1.signal||0),(n2.signal||0))/200;
+  if(n1.motion && n2.motion) line.material.color.setHex(0xff0000);
+  else line.material.color.setHex(0xffffff);
 }
 
-// Init radar
-initRadar();
 
-// ═══════════════════════════════════════════════════════
-// DOM REFS
-// ═══════════════════════════════════════════════════════
-const $=id=>document.getElementById(id);
-const stateLabel=$('stateLabel'),stateDesc=$('stateDesc');
-const routerBadge=$('routerBadge');
-const thrSlider=$('thrSlider'),thrVal=$('thrVal');
-const muteBtn=$('muteBtn'),simToggle=$('simToggle'),simBadge=$('simBadge');
-const calBarWrap=$('calBarWrap'),calFill=$('calFill'),calText=$('calText');
-const confFill=$('confFill'),confPct=$('confPct'),confSource=$('confSource');
-const cooldownNote=$('cooldownNote');
-const offlineBanner=$('offlineBanner');
-const logList=$('logList');
-
-// ═══════════════════════════════════════════════════════
-// CONTROLS
-// ═══════════════════════════════════════════════════════
-thrSlider.addEventListener('input',()=>{
-  thrVal.textContent=parseFloat(thrSlider.value).toFixed(1);
-  if(!simMode)fetch(`/set_threshold/${thrSlider.value}`).catch(()=>{});
-});
-muteBtn.addEventListener('click',()=>{
-  muted=!muted;muteBtn.innerHTML=muted?'&#128263;':'&#128266;';
-  muteBtn.classList.toggle('active',muted);
-});
-simToggle.addEventListener('change',()=>{
-  simMode=simToggle.checked;simBadge.classList.toggle('visible',simMode);
-  if(simMode){simTick=0;simBursting=false;
-    simWin={extender:[],laptop:[],phone:[]};
-    simEma={extender:null,laptop:null,phone:null};
-    simConsec={extender:0,laptop:0,phone:0};
-    simCalCount={extender:0,laptop:0,phone:0};
-    simCalBuf={extender:[],laptop:[],phone:[]};
-    calDone=false;calBarWrap.classList.remove('hidden');}
-});
-
-// ═══════════════════════════════════════════════════════
-// CHART
-// ═══════════════════════════════════════════════════════
-const chartCtx=$('signalChart').getContext('2d');
-const chart=new Chart(chartCtx,{
+// ── CHARTS ──
+const mCtx=$('mainChart').getContext('2d');
+const mainChart=new Chart(mCtx,{
   type:'line',
-  data:{labels:[],datasets:[
-    {label:'Laptop',data:[],borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,0.06)',
-     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
-    {label:'Phone',data:[],borderColor:'#BA7517',backgroundColor:'rgba(186,117,23,0.06)',
-     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
-    {label:'Extender',data:[],borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.06)',
-     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true}
+  data:{labels:Array(60).fill(''),datasets:[
+    {borderColor:'#378ADD',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)},
+    {borderColor:'#BA7517',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)},
+    {borderColor:'#1D9E75',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)}
   ]},
-  options:{responsive:true,maintainAspectRatio:false,animation:{duration:200},
-    interaction:{mode:'index',intersect:false},
-    scales:{
-      x:{ticks:{color:'#3a4660',font:{family:'JetBrains Mono',size:8},maxTicksLimit:8},
-         grid:{color:'rgba(255,255,255,0.02)'}},
-      y:{min:0,max:100,ticks:{color:'#6b7a99',font:{family:'JetBrains Mono',size:9}},
-         grid:{color:'rgba(255,255,255,0.03)'}}
-    },
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},
+    scales:{x:{display:false},y:{min:0,max:100,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#6b7a99'}}},
     plugins:{legend:{display:false}}
   }
 });
 
-// ═══════════════════════════════════════════════════════
-// UI UPDATERS
-// ═══════════════════════════════════════════════════════
-function updateState(state,cooldown){
-  stateLabel.textContent=state;
-  stateLabel.style.color=SCOL[state]||'#888';
-  stateDesc.textContent=SDESC[state]||'';
-  if(state!==lastState&&!cooldown){
-    if(state==='ACTIVITY')beep(220,80);
-    else if(state==='MOTION')beep(440,100);
-    else if(state==='CONFIRMED')confirmedBeep();
-  }
-  lastState=state;
-}
-
-function updateCalBar(nodes){
-  if(calDone)return;
-  let total=0,done=0;
-  KEYS.forEach(k=>{
-    const n=nodes[k]||{};
-    const cal=n.calibrated;
-    const overlay=$(`cal-${k}`);
-    if(cal){overlay.classList.add('hidden');done++;}
-    else{overlay.classList.remove('hidden');
-      const wb=n._warmup_count||0;
-      $(`calprog-${k}`).style.width=`${Math.min(100,wb/20*100)}%`;}
-    total++;
+const sparks={};
+KEYS.forEach(k=>{
+  sparks[k]=new Chart($(f`spark-${k}`).getContext('2d'),{
+    type:'line',
+    data:{labels:Array(20).fill(''),datasets:[{borderColor:COLS[k],borderWidth:1.5,pointRadius:0,tension:0.2,data:Array(20).fill(null)}]},
+    options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false}}}
   });
-  const pct=Math.round(done/total*100);
-  calFill.style.width=`${pct}%`;
-  if(done===total){
-    calDone=true;calFill.classList.add('done');
-    calText.textContent='Baseline set -- detection active';calText.classList.add('done');
-    setTimeout(()=>calBarWrap.classList.add('hidden'),2000);
-  }else{
-    const remaining=Math.max(0,20-Math.max(...KEYS.map(k=>(nodes[k]||{})._warmup_count||0)));
-    calText.textContent=`Calibrating... ~${remaining}s remaining`;
+});
+function f(s){return s[0].replace(/\[|\]/g,'');} // hack for template lit
+
+// ── UPDATE LOGIC ──
+let lastStateStr='';
+function processData(d){
+  sysState.state=d.state||'IDLE';
+  sysState.conf=d.confidence||0;
+  sysState.nodes=d.nodes||{};
+  sysState.pos=d.positions||{};
+
+  // Audio
+  if(sysState.state!==lastStateStr && !d.cooldown){
+    if(sysState.state==='ACTIVITY')beep(220,80);
+    else if(sysState.state==='MOTION')beep(440,100);
+    else if(sysState.state==='CONFIRMED'){beep(330,80);setTimeout(()=>beep(440,80),100);setTimeout(()=>beep(550,80),200);}
+  }
+  lastStateStr=sysState.state;
+
+  // HUD
+  $('hudState').textContent=sysState.state;
+  $('hudState').style.color=SCOLS[sysState.state]||'#888';
+  $('hudConf').textContent=`CONFIDENCE: ${Math.round(sysState.conf*100)}%`;
+
+  // Panel
+  $('spState').textContent=sysState.state;
+  $('spState').style.color=SCOLS[sysState.state]||'#888';
+  $('spDesc').textContent=SDESC[sysState.state]||'';
+  $('spNodes').textContent=`${d.active_nodes||0} ACTIVE NODES`;
+  
+  $('spConfFill').style.width=`${Math.round(sysState.conf*100)}%`;
+  $('spConfFill').className='conf-fill '+(sysState.conf>0.65?'red':sysState.conf>0.25?'amber':'green');
+
+  // Nodes
+  KEYS.forEach((k,i)=>{
+    const n=sysState.nodes[k]||{};
+    const online=n.online!==false;
+    
+    let stEl=document.getElementById(`ns-${k}`);
+    if(!online){stEl.textContent='OFF';stEl.className='nc-status off';}
+    else if(!n.calibrated){stEl.textContent='CAL';stEl.className='nc-status cal';}
+    else{stEl.textContent='ON';stEl.className='nc-status on';}
+
+    document.getElementById(`sig-${k}`).innerHTML=`${n.signal||0}<small>%</small>`;
+    document.getElementById(`z-${k}`).textContent=`z: ${(n.zscore||0).toFixed(2)}`;
+    
+    if(sysState.pos[k] && k!=='extender') document.getElementById(`dist-${k}`).textContent=`${(sysState.pos[k].distance_from_extender||0).toFixed(1)} m`;
+
+    // Charts
+    history[k].push(n.smoothed||n.signal||0);
+    if(history[k].length>60)history[k].shift();
+    mainChart.data.datasets[i].data=history[k];
+
+    sparkH[k].push(n.signal||0);
+    if(sparkH[k].length>20)sparkH[k].shift();
+    sparks[k].data.datasets[0].data=sparkH[k];
+    sparks[k].update();
+  });
+  mainChart.update();
+
+  // Log detect
+  if(d.motion && !d.cooldown && sysState.state!=='CALIBRATING'){
+    const ts=new Date().toTimeString().slice(0,8);
+    const stCode=sysState.state.substring(0,3);
+    const div=document.createElement('div');
+    div.className='log-entry motion';
+    div.innerHTML=`<span class="le-time">[${ts}]</span><span class="le-state ${stCode}">&#9888; ${stCode}</span><span>src:${d.source} conf:${sysState.conf.toFixed(2)}</span>`;
+    $('logList').prepend(div);
+    if($('logList').children.length>30) $('logList').lastChild.remove();
+    logEvents.push({ts,st:sysState.state,src:d.source,conf:sysState.conf});
   }
 }
 
-function updateNodeCard(key,n){
-  const card=$(`card-${key}`);
-  const online=n.online!==undefined?n.online:true;
-  const now=Date.now()/1000;
-  $(`sig-${key}`).textContent=`${n.signal||0}%`;
-  $(`smooth-${key}`).textContent=(n.smoothed||0).toFixed(1);
-  const az=Math.abs(n.zscore||0);
-  const zb=$(`zbadge-${key}`);
-  zb.textContent=`z: ${(n.zscore||0).toFixed(2)}`;
-  zb.className='z-badge '+(az>2?'red':az>1?'amber':'green');
-  const ns=$(`nstate-${key}`);
-  if(n.motion){ns.textContent='MOTION';ns.style.color='var(--motion)';card.classList.add('motion-active');}
-  else{ns.textContent='IDLE';ns.style.color='var(--idle)';card.classList.remove('motion-active');}
-  const dot=$(`dot-${key}`);
-  if(online){dot.className='online-dot on';card.classList.remove('offline');}
-  else{dot.className='online-dot off';card.classList.add('offline');
-    const ago=n.last_seen?Math.round(now-n.last_seen):0;
-    $(`lastseen-${key}`).textContent=`Last seen ${ago}s ago`;}
-  if(key==='laptop'&&n.router){routerBadge.textContent=n.router;routerBadge.title=n.router;}
-}
-
-function updateConfidence(data){
-  const conf=data.confidence||0;
-  const pct=Math.round(conf*100);
-  confFill.style.width=`${pct}%`;
-  confPct.textContent=`${pct}%`;
-  confSource.textContent=data.source||'none';
-  confFill.className='conf-fill '+(conf>0.65?'red':conf>0.25?'amber':'green');
-  cooldownNote.classList.toggle('visible',!!data.cooldown);
-}
-
-function updateChart(){
-  chart.data.labels=timeLabels.slice(-MAX_H);
-  chart.data.datasets[0].data=history.laptop.slice(-MAX_H);
-  chart.data.datasets[1].data=history.phone.slice(-MAX_H);
-  chart.data.datasets[2].data=history.extender.slice(-MAX_H);
-  chart.update('none');
-}
-
-function addHistoryEntry(data){
-  if(!data.motion)return;
-  const ts=new Date(data.timestamp*1000).toTimeString().slice(0,8);
-  const conf=(data.confidence||0);
-  const entry={ts,state:data.state,conf,source:data.source||'',nodes:data.nodes};
-  events.unshift(entry);if(events.length>50)events.pop();
-  renderLogEntry(entry,true);
-}
-
-function renderLogEntry(e,prepend){
-  const div=document.createElement('div');div.className='log-entry';
-  const stColor=SCOL[e.state]||'#888';
-  const confW=Math.round(e.conf*100);
-  const confColor=e.conf>0.65?'#E53E3E':e.conf>0.25?'#E8912A':'#38A169';
-  let zText='';
-  if(e.nodes){KEYS.forEach(k=>{if(e.nodes[k])zText+=`${k[0].toUpperCase()}:${(e.nodes[k].zscore||0).toFixed(1)} `;});}
-  div.innerHTML=`<span class="log-ts">${e.ts}</span>`+
-    `<span class="log-state-badge" style="background:${stColor}22;color:${stColor}">${e.state}</span>`+
-    `<span class="log-conf-bar"><span class="log-conf-fill" style="width:${confW}%;background:${confColor}"></span></span>`+
-    `<span class="log-src">${e.source}</span>`+
-    `<span class="log-zscores">${zText.trim()}</span>`;
-  if(prepend)logList.insertBefore(div,logList.firstChild);else logList.appendChild(div);
-}
-
-// ═══════════════════════════════════════════════════════
-// LOG CONTROLS
-// ═══════════════════════════════════════════════════════
-$('clearHist').addEventListener('click',()=>{
-  logList.innerHTML='';events=[];
-  if(!simMode)fetch('/clear_history',{method:'POST'}).catch(()=>{});
-});
-$('exportCsv').addEventListener('click',()=>{
-  let csv='Timestamp,State,Confidence,Source\n';
-  events.forEach(e=>csv+=`${e.ts},${e.state},${e.conf.toFixed(2)},${e.source}\n`);
-  const blob=new Blob([csv],{type:'text/csv'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  a.download=`wifi_events_${Date.now()}.csv`;a.click();URL.revokeObjectURL(a.href);
-});
-
-// ═══════════════════════════════════════════════════════
-// LOAD HISTORY
-// ═══════════════════════════════════════════════════════
-async function loadHistory(){
-  try{const r=await fetch('/history');const d=await r.json();
-    (d.events||[]).forEach(e=>{
-      const ts=new Date(e.timestamp*1000).toTimeString().slice(0,8);
-      const entry={ts,state:e.state,conf:e.confidence,source:e.source,nodes:e.nodes};
-      events.push(entry);renderLogEntry(entry,false);
-    });}catch(e){}
-}
-loadHistory();
-
-// ═══════════════════════════════════════════════════════
-// SIMULATION
-// ═══════════════════════════════════════════════════════
-function simZscore(v,w){if(w.length<5)return 0;
-  const m=w.reduce((a,b)=>a+b,0)/w.length;
-  const s=Math.sqrt(w.reduce((a,b)=>a+(b-m)**2,0)/w.length)||0.001;return(v-m)/s;}
-function simEmaSmooth(k,raw){if(simEma[k]===null)simEma[k]=raw;
-  const s=0.3*raw+0.7*simEma[k];simEma[k]=s;return s;}
-
-function runSimTick(){
-  simTick++;const thr=parseFloat(thrSlider.value);
-  if(!simBursting&&simTick%15===0){simBursting=true;simBurstStart=simTick}
-  if(simBursting&&simTick-simBurstStart>=6)simBursting=false;
-  const bases={extender:71,laptop:78,phone:65};
-  const spreads={extender:6,laptop:4,phone:5};
-  const drop=simBursting?(14+Math.random()*6):0;
-  const nodes={};let motionNodes=[],conf=0;let allCalibrated=true;
-  KEYS.forEach(k=>{
-    const raw=Math.round(Math.max(0,Math.min(100,bases[k]+(Math.random()-0.5)*spreads[k]*2-drop)));
-    const smoothed=simEmaSmooth(k,raw);
-    if(simCalCount[k]<20){simCalCount[k]++;simCalBuf[k].push(smoothed);
-      nodes[k]={signal:raw,smoothed:Math.round(smoothed*100)/100,zscore:0,
-        motion:false,calibrated:false,online:true,last_seen:Date.now()/1000,_warmup_count:simCalCount[k]};
-      allCalibrated=false;return;}
-    if(!simBaseline[k].set){const buf=simCalBuf[k];
-      simBaseline[k].m=buf.reduce((a,b)=>a+b,0)/buf.length;
-      const v=buf.reduce((a,b)=>a+(b-simBaseline[k].m)**2,0)/buf.length;
-      simBaseline[k].s=Math.sqrt(v)||1;simBaseline[k].set=true;}
-    simWin[k].push(smoothed);if(simWin[k].length>20)simWin[k].shift();
-    const z=simZscore(smoothed,simWin[k]);
-    let motion=false;
-    if(simWin[k].length>=5&&Math.abs(z)>thr){simConsec[k]++;
-      if(simConsec[k]>=2){motion=true;simConsec[k]=0}}else simConsec[k]=0;
-    if(motion){motionNodes.push(k);conf+=NWEIGHTS[k]}
-    nodes[k]={signal:raw,smoothed:Math.round(smoothed*100)/100,
-      zscore:Math.round(z*1000)/1000,motion,calibrated:true,
-      online:true,last_seen:Date.now()/1000,_warmup_count:20};
-  });
-  conf=Math.round(Math.min(conf,1)*100)/100;
-  let state;
-  if(!allCalibrated)state='CALIBRATING';
-  else if(conf===0)state='IDLE';
-  else if(conf<=0.25)state='ACTIVITY';
-  else if(conf<=0.65)state='MOTION';
-  else state='CONFIRMED';
-  processData({state,motion:conf>0,confidence:conf,
-    source:motionNodes.length?motionNodes.join('+'):'none',
-    active_nodes:3,cooldown:false,timestamp:Date.now()/1000,nodes});
-}
-
-// ═══════════════════════════════════════════════════════
-// UNIFIED PROCESSOR
-// ═══════════════════════════════════════════════════════
-function processData(data){
-  const nodes=data.nodes||{};
-  updateState(data.state,data.cooldown);
-  updateCalBar(nodes);
-  updateConfidence(data);
-  updateRadar(data);
-
-  const now=new Date();const ts=now.toTimeString().slice(0,5);
-  timeLabels.push(ts);if(timeLabels.length>MAX_H)timeLabels.shift();
-  KEYS.forEach(k=>{if(nodes[k]){updateNodeCard(k,nodes[k]);
-    history[k].push(nodes[k].smoothed||nodes[k].signal||0);
-    if(history[k].length>MAX_H)history[k].shift();}});
-  updateChart();addHistoryEntry(data);
-}
-
-// ═══════════════════════════════════════════════════════
-// POLLING
-// ═══════════════════════════════════════════════════════
+// ── POLLING / SIM ──
 async function poll(){
-  if(simMode){runSimTick();failStrikes=0;offlineBanner.classList.remove('visible');return}
-  try{const r=await fetch('/fused');if(!r.ok)throw new Error(`HTTP ${r.status}`);
-    const data=await r.json();
-    KEYS.forEach(k=>{if(data.nodes&&data.nodes[k]){const n=data.nodes[k];
-      if(!n.calibrated)n._warmup_count=Math.min(20,Math.round((Date.now()/1000-(n.timestamp||Date.now()/1000-1))));
-      else n._warmup_count=20;}});
-    processData(data);failStrikes=0;offlineBanner.classList.remove('visible');
-  }catch(e){failStrikes++;if(failStrikes>=3)offlineBanner.classList.add('visible');}
+  if(simMode){runSim();return;}
+  try{
+    const r=await fetch('/fused');
+    if(!r.ok)throw new Error();
+    processData(await r.json());
+    failStrikes=0;$('offlineBanner').classList.remove('visible');
+  }catch(e){
+    failStrikes++;
+    if(failStrikes>=3) $('offlineBanner').classList.add('visible');
+  }
 }
 
-setInterval(poll,1000);poll();
+// Sim logic simplified for client
+let simT=0;
+function runSim(){
+  simT++;
+  let isBurst = (simT%15>0 && simT%15<6);
+  let ld = 78 + Math.sin(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
+  let pd = 65 + Math.cos(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
+  let md = isBurst;
+  let conf = isBurst?0.75:0;
+  
+  processData({
+    state: isBurst?'MOTION':'IDLE',
+    confidence: conf,
+    source: isBurst?'laptop+phone':'none',
+    active_nodes: 3, cooldown: false,
+    nodes: {
+      extender:{signal:71,smoothed:71,zscore:0.2,motion:false,online:true,calibrated:true},
+      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?-3.2:0.5,motion:md,online:true,calibrated:true},
+      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?-2.8:0.1,motion:md,online:true,calibrated:true}
+    },
+    positions: {
+      extender:{x:0,y:0,z:0},
+      router:{x:0,y:0,z:-4},
+      laptop:{x:2.1,y:0.9,z:0.2,distance_from_extender:isBurst?2.8:2.3},
+      phone:{x:-1.8,y:1.5,z:0.05,distance_from_extender:isBurst?3.0:2.4}
+    }
+  });
+}
+
+// ── INIT ──
+$('btnRotate').onclick=e=>{autoRotate=!autoRotate;e.target.classList.toggle('active',autoRotate);};
+$('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'&#128263;':'&#128266;';e.target.classList.toggle('active',muted);};
+$('simToggle').onchange=e=>{simMode=e.target.checked;$('simBadge').classList.toggle('active',simMode);};
+$('thrSlider').oninput=e=>{$('thrVal').textContent=e.target.value;if(!simMode)fetch('/set_threshold/'+e.target.value).catch(()=>{});};
+$('btnExport').onclick=()=>{
+  let csv='Time,State,Source,Conf\n'+logEvents.map(e=>`${e.ts},${e.st},${e.src},${e.conf}`).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv]));
+  a.download='events.csv';a.click();
+};
+
+init3D();
+setInterval(poll,1000);
+poll();
 </script>
 </body>
 </html>

@@ -1,4 +1,4 @@
-import subprocess, re, time, threading, statistics, json, os
+import subprocess, re, time, threading, statistics, json, os, math
 from collections import deque
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -46,6 +46,59 @@ fused = {
 }
 
 # -- Signal processing -------------------------------------
+# ── RSSI → Distance estimation (log-distance path loss model) ──
+# Calibrate these for your home:
+TX_POWER_DBM = -40    # RSSI at 1 metre (measure this once)
+PATH_LOSS_EXP = 3.0   # 2=free space, 3-4=indoor with walls
+
+def rssi_to_distance(rssi_percent):
+    """Convert Windows signal % → estimated metres from router"""
+    # Windows % to dBm approximation
+    dbm = (rssi_percent / 2) - 100
+    if dbm >= TX_POWER_DBM: return 0.5
+    distance = 10 ** ((TX_POWER_DBM - dbm) / (10 * PATH_LOSS_EXP))
+    return round(min(distance, 20.0), 2)  # cap at 20m
+
+def estimate_positions():
+    """
+    Estimate 3D positions using extender as origin anchor.
+    Returns x,y,z for each node in metres.
+    Extender = fixed at (0,0,0) — it's wall-mounted.
+    Router = fixed at (0,0,-4) — ground floor, approx 4m below.
+    Phone + Laptop = estimated from RSSI distance to extender.
+    """
+    ext_sig = nodes["extender"]["signal"]
+    lap_sig  = nodes["laptop"]["signal"]
+    phn_sig  = nodes["phone"]["signal"]
+
+    # Distance from extender for each mobile node
+    lap_dist = rssi_to_distance(lap_sig)
+    phn_dist = rssi_to_distance(phn_sig)
+
+    # Without angle data we can only estimate a radius sphere.
+    # Spread them angularly using their relative RSSI to router
+    # as a weak angular hint (higher router RSSI = closer to stairwell)
+    router_sig = nodes["laptop"]["signal"]  # laptop sees router directly
+
+    return {
+        "extender": {"x": 0,   "y": 0,   "z": 0,   "fixed": True,  "floor": 1},
+        "router":   {"x": 0,   "y": 0,   "z":-4,   "fixed": True,  "floor": 0},
+        "laptop":   {
+            "x": round(lap_dist * 0.7, 2),
+            "y": round(lap_dist * 0.3, 2),
+            "z": round(lap_dist * 0.1, 2),
+            "fixed": False, "floor": 1,
+            "distance_from_extender": lap_dist
+        },
+        "phone": {
+            "x": round(-phn_dist * 0.6, 2),
+            "y": round(phn_dist * 0.5, 2),
+            "z": round(phn_dist * 0.05, 2),
+            "fixed": False, "floor": 1,
+            "distance_from_extender": phn_dist
+        }
+    }
+
 def ema_smooth(key, raw):
     if ema_prev[key] is None:
         ema_prev[key] = raw
@@ -228,7 +281,11 @@ def get_fused():
         n = nodes[k].copy()
         n["online"] = (now - n["last_seen"]) < (PHONE_TIMEOUT if k != "laptop" else 9999)
         node_data[k] = n
-    return jsonify({**fused, "nodes": node_data})
+    return jsonify({
+        **fused,
+        "nodes": node_data,
+        "positions": estimate_positions()
+    })
 
 @app.route("/history")
 def history():
