@@ -1,193 +1,271 @@
-import subprocess
-import re
-import time
-import threading
-import statistics
+import subprocess, re, time, threading, statistics, json, os
 from collections import deque
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-app = Flask(__name__, static_folder='static')
+app = Flask(__name__)
 CORS(app)
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-WINDOW = 20
-THRESHOLD = 2.0
-CONSECUTIVE_NEEDED = 2
+# -- Config ------------------------------------------------
+WARMUP_SAMPLES   = 20      # calibration phase - no detection
+WINDOW_SIZE      = 20      # rolling Z-score window
+EMA_ALPHA        = 0.3     # smoothing factor (0=no change, 1=raw)
+CONSECUTIVE_NEED = 2       # Z-spikes in a row before node.motion=True
+COOLDOWN_SECS    = 4       # seconds before re-arming after event
+PHONE_TIMEOUT    = 5       # seconds before phone marked offline
+EXTENDER_TIMEOUT = 5
+EVENT_LOG_FILE   = "events.jsonl"
 
-# ---------------------------------------------------------------------------
-# Node registry — floor tagged
-# Router is ground floor (reference only — vertical through-slab signal
-# rarely changes when someone walks on the first floor).
-# The real sensing mesh is the triangle: Extender — Laptop — Phone
-# on the first floor.
-# ---------------------------------------------------------------------------
-NODE_META = {
-    "laptop":   {"floor": 1, "role": "primary"},
-    "phone":    {"floor": 1, "role": "primary"},
-    "extender": {"floor": 1, "role": "primary"},
-    "router":   {"floor": 0, "role": "reference"},
+# Node weights - floor-aware (router on ground floor = reference only)
+NODE_WEIGHTS = {"laptop": 0.40, "phone": 0.35, "extender": 0.25}
+
+# -- State --------------------------------------------------
+nodes = {k: {
+    "signal": 0, "smoothed": 0.0, "zscore": 0.0,
+    "motion": False, "consecutive": 0,
+    "timestamp": 0, "last_seen": 0,
+    "calibrated": False, "baseline_mean": 0, "baseline_std": 0
+} for k in NODE_WEIGHTS}
+
+nodes["laptop"]["router"] = "Unknown"
+
+windows    = {k: deque(maxlen=WINDOW_SIZE) for k in NODE_WEIGHTS}
+warmup_buf = {k: [] for k in NODE_WEIGHTS}
+ema_prev   = {k: None for k in NODE_WEIGHTS}
+consec     = {k: 0 for k in NODE_WEIGHTS}
+cooldown_until = 0
+
+fused = {
+    "state": "CALIBRATING",
+    "motion": False,
+    "confidence": 0.0,
+    "source": "none",
+    "active_nodes": 0,
+    "cooldown": False,
+    "timestamp": 0
 }
 
-nodes = {k: {"signal": 0, "zscore": 0.0, "motion": False,
-             "timestamp": 0, "last_seen": 0} for k in NODE_META}
-windows = {k: deque(maxlen=WINDOW) for k in NODE_META}
-consec  = {k: 0 for k in NODE_META}
+# -- Signal processing -------------------------------------
+def ema_smooth(key, raw):
+    if ema_prev[key] is None:
+        ema_prev[key] = raw
+    smoothed = EMA_ALPHA * raw + (1 - EMA_ALPHA) * ema_prev[key]
+    ema_prev[key] = smoothed
+    return round(smoothed, 2)
 
-fused = {"motion": False, "confidence": 0.0, "source": "none",
-         "floor1_active": 0, "timestamp": 0}
-
-
-# ---------------------------------------------------------------------------
-# Signal analysis
-# ---------------------------------------------------------------------------
 def zscore(val, win):
-    if len(win) < 5:
-        return 0.0
+    if len(win) < 5: return 0.0
     m = statistics.mean(win)
     s = statistics.stdev(win) or 0.001
     return (val - m) / s
 
+def adaptive_threshold(key):
+    """2.2x above baseline noise - computed once during warmup"""
+    n = nodes[key]
+    if not n["calibrated"]: return 2.0
+    return max(1.5, 2.2 * n["baseline_std"] / max(n["baseline_std"], 1))
 
-def update_node(key, signal):
-    """Update a node's signal and recompute detection."""
-    windows[key].append(signal)
-    z = zscore(signal, windows[key])
-    motion = False
+def update_node(key, raw_signal):
+    global cooldown_until
+    n = nodes[key]
+    now = time.time()
 
-    if len(windows[key]) >= 5 and abs(z) > THRESHOLD:
+    # EMA smooth
+    smoothed = ema_smooth(key, raw_signal)
+    n["signal"]    = raw_signal
+    n["smoothed"]  = smoothed
+    n["timestamp"] = now
+    n["last_seen"] = now
+
+    # Warmup / calibration
+    if not n["calibrated"]:
+        warmup_buf[key].append(smoothed)
+        if len(warmup_buf[key]) >= WARMUP_SAMPLES:
+            buf = warmup_buf[key]
+            n["baseline_mean"] = statistics.mean(buf)
+            n["baseline_std"]  = statistics.stdev(buf) or 1.0
+            n["calibrated"]    = True
+        n["zscore"] = 0.0
+        n["motion"] = False
+        update_fused()
+        return
+
+    # Z-score
+    windows[key].append(smoothed)
+    z = zscore(smoothed, windows[key])
+    n["zscore"] = round(z, 3)
+
+    # Consecutive anomaly gate
+    thresh = adaptive_threshold(key)
+    if abs(z) > thresh:
         consec[key] += 1
-        if consec[key] >= CONSECUTIVE_NEEDED:
-            motion = True
-            consec[key] = 0
     else:
         consec[key] = 0
 
-    nodes[key].update({
-        "signal": signal,
-        "zscore": round(z, 3),
-        "motion": motion,
-        "timestamp": time.time(),
-        "last_seen": time.time()
-    })
+    # Motion confirmed for this node
+    in_cooldown = now < cooldown_until
+    n["motion"] = (consec[key] >= CONSECUTIVE_NEED) and not in_cooldown
+    if n["motion"]:
+        consec[key] = 0  # reset after firing
+
     update_fused()
 
-
 def update_fused():
-    """Recompute fused detection — only floor-1 nodes contribute."""
-    global fused
+    global cooldown_until
     now = time.time()
+    in_cooldown = now < cooldown_until
 
-    floor1_nodes = [k for k, m in NODE_META.items() if m["floor"] == 1]
-    active = []
-    conf = 0.0
+    # Check calibration
+    all_calibrated = all(nodes[k]["calibrated"] for k in NODE_WEIGHTS)
+    if not all_calibrated:
+        fused.update({"state": "CALIBRATING", "motion": False,
+                      "confidence": 0.0, "source": "none",
+                      "active_nodes": 0, "cooldown": False, "timestamp": now})
+        return
 
-    for k in floor1_nodes:
-        fresh = (now - nodes[k]["last_seen"]) < 5
-        if k == "laptop":
-            fresh = True  # laptop is always local
+    # Build active node list (fresh only)
+    active, motion_nodes, conf = [], [], 0.0
+    for k, w in NODE_WEIGHTS.items():
+        fresh = (now - nodes[k]["last_seen"]) < (PHONE_TIMEOUT if k != "laptop" else 9999)
         if fresh:
             active.append(k)
             if nodes[k]["motion"]:
-                conf += 1.0 / len(floor1_nodes)
+                motion_nodes.append(k)
+                conf += w
 
-    sources = [k for k in active if nodes[k]["motion"]]
+    conf = round(min(conf, 1.0), 2)
 
-    fused = {
-        "motion": conf >= (1.0 / len(floor1_nodes)),
-        "confidence": round(conf, 2),
-        "source": "+".join(sources) if sources else "none",
-        "floor1_active": len(active),
+    # 6-state ladder
+    if in_cooldown:
+        state = fused["state"]  # hold last state during cooldown
+    elif conf == 0:
+        watching = any(consec[k] == 1 for k in active)
+        state = "WATCHING" if watching else "IDLE"
+    elif conf <= 0.25:
+        state = "ACTIVITY"
+    elif conf <= 0.65:
+        state = "MOTION"
+    else:
+        state = "CONFIRMED"
+
+    # Log + cooldown on new confirmed events
+    prev_motion = fused.get("motion", False)
+    new_motion  = conf > 0
+    if new_motion and not prev_motion and not in_cooldown:
+        log_event(state, conf, motion_nodes)
+        cooldown_until = now + COOLDOWN_SECS
+
+    fused.update({
+        "state": state,
+        "motion": new_motion,
+        "confidence": conf,
+        "source": "+".join(motion_nodes) if motion_nodes else "none",
+        "active_nodes": len(active),
+        "cooldown": in_cooldown,
         "timestamp": now
+    })
+
+def log_event(state, conf, sources):
+    event = {
+        "timestamp": time.time(),
+        "state": state,
+        "confidence": conf,
+        "source": "+".join(sources),
+        "nodes": {k: {"signal": nodes[k]["signal"],
+                      "zscore": nodes[k]["zscore"]} for k in NODE_WEIGHTS}
     }
+    try:
+        with open(EVENT_LOG_FILE, "a") as f:
+            f.write(json.dumps(event) + "\n")
+    except Exception:
+        pass
 
-
-# ---------------------------------------------------------------------------
-# Laptop RSSI loop (Windows netsh — reads router signal)
-# ---------------------------------------------------------------------------
+# -- Laptop polling loop ------------------------------------
 def laptop_loop():
+    fail_count = 0
     while True:
         try:
             out = subprocess.check_output(
                 "netsh wlan show interfaces",
-                shell=True).decode(errors="ignore")
-            sig = re.search(r"Signal\s*:\s*(\d+)%", out)
+                shell=True, timeout=3
+            ).decode(errors="ignore")
+            sig  = re.search(r"Signal\s*:\s*(\d+)%", out)
             ssid = re.search(r"SSID\s*:\s*(.+)", out)
             if sig:
                 update_node("laptop", int(sig.group(1)))
-            nodes["laptop"]["router"] = ssid.group(1).strip() if ssid else "Unknown"
+                nodes["laptop"]["router"] = ssid.group(1).strip() if ssid else "Unknown"
+                fail_count = 0
+            else:
+                fail_count += 1
         except Exception:
-            pass
+            fail_count += 1
+        if fail_count >= 3:
+            nodes["laptop"]["motion"] = False
         time.sleep(1)
 
-
-# ---------------------------------------------------------------------------
-# Flask routes
-# ---------------------------------------------------------------------------
-@app.route("/")
-def index():
-    return send_from_directory('static', 'index.html')
-
-
+# -- API ----------------------------------------------------
 @app.route("/rssi")
 def rssi():
-    return jsonify(nodes["laptop"])
-
+    return jsonify({**nodes["laptop"], "fused_state": fused["state"]})
 
 @app.route("/phone", methods=["POST"])
 def phone_post():
     d = request.json or {}
-    update_node("phone", d.get("signal", 0))
-    return jsonify({"status": "ok"})
-
+    update_node("phone", int(d.get("signal", 0)))
+    return jsonify({"status": "ok", "calibrated": nodes["phone"]["calibrated"]})
 
 @app.route("/extender", methods=["POST"])
 def extender_post():
     d = request.json or {}
-    update_node("extender", d.get("signal", 0))
-    return jsonify({"status": "ok"})
-
+    update_node("extender", int(d.get("signal", 0)))
+    return jsonify({"status": "ok", "calibrated": nodes["extender"]["calibrated"]})
 
 @app.route("/fused")
 def get_fused():
-    return jsonify({**fused, "nodes": nodes, "meta": NODE_META})
+    now = time.time()
+    node_data = {}
+    for k in NODE_WEIGHTS:
+        n = nodes[k].copy()
+        n["online"] = (now - n["last_seen"]) < (PHONE_TIMEOUT if k != "laptop" else 9999)
+        node_data[k] = n
+    return jsonify({**fused, "nodes": node_data})
 
+@app.route("/history")
+def history():
+    events = []
+    if os.path.exists(EVENT_LOG_FILE):
+        with open(EVENT_LOG_FILE) as f:
+            lines = f.readlines()
+        for line in lines[-50:]:
+            try: events.append(json.loads(line))
+            except Exception: pass
+    return jsonify({"events": events[::-1]})
 
 @app.route("/set_threshold/<float:val>")
 def set_threshold(val):
-    global THRESHOLD
-    THRESHOLD = val
-    return jsonify({"threshold": THRESHOLD})
+    for k in NODE_WEIGHTS:
+        nodes[k]["_manual_threshold"] = val
+    return jsonify({"threshold": val})
 
+@app.route("/clear_history", methods=["POST"])
+def clear_history():
+    open(EVENT_LOG_FILE, "w").close()
+    return jsonify({"status": "cleared"})
+
+@app.route("/")
+def index(): return app.send_static_file("index.html")
 
 @app.route("/phone.html")
-def phone_page():
-    return send_from_directory('static', 'phone.html')
-
+def phone_page(): return app.send_static_file("phone.html")
 
 @app.route("/extender.html")
-def ext_page():
-    return send_from_directory('static', 'extender.html')
+def ext_page(): return app.send_static_file("extender.html")
 
-
-@app.route('/<path:path>')
-def serve_static(path):
-    return send_from_directory('static', path)
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
 if __name__ == "__main__":
-    boot_time = time.time()
-
     threading.Thread(target=laptop_loop, daemon=True).start()
-    print("[+] Laptop RSSI loop started (floor 1, primary)")
-    print("[+] Phone endpoint ready  -> POST /phone")
-    print("[+] Extender endpoint     -> POST /extender")
-    print("[+] Fused detection       -> GET  /fused")
-    print("[+] Dashboard             -> http://0.0.0.0:5000")
-    print("[i] Router (floor 0) logged as reference only - excluded from motion scoring")
+    print("=" * 48)
+    print("  Human Wi-Fi Detector - upgraded backend")
+    print("  http://localhost:5000")
+    print("  Calibration: first 20 readings (20s)")
+    print("=" * 48)
     app.run(host="0.0.0.0", port=5000, debug=False)

@@ -3,383 +3,346 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Human WiFi Detector — 2 Floor</title>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<title>Human WiFi Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
-/* ── Reset & Base ──────────────────────────────────── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#0a0e1a;--surface:#0f1424;--elevated:#151b2e;
-  --teal:#1D9E75;--blue:#378ADD;--amber:#BA7517;--alert:#ff4444;
-  --text:#e0e6f0;--muted:#6b7a99;--border:rgba(255,255,255,0.06);
+  --text:#e0e6f0;--muted:#6b7a99;--dim:#3a4660;
+  --border:rgba(255,255,255,0.06);
   --glass:rgba(255,255,255,0.03);--glass-hover:rgba(255,255,255,0.07);
   --glass-border:rgba(255,255,255,0.08);--glass-border-hover:rgba(255,255,255,0.18);
   --font:'JetBrains Mono',monospace;
+  /* State colors */
+  --cal:#888;--idle:#38A169;--watching:#D97706;
+  --activity:#E8912A;--motion:#E53E3E;--confirmed:#ff2020;
+  /* Node colors */
+  --laptop:#378ADD;--phone:#BA7517;--extender:#1D9E75;
 }
 html{font-size:14px}
 body{background:var(--bg);color:var(--text);font-family:var(--font);
   min-height:100vh;overflow-x:hidden;line-height:1.5}
-a{color:var(--teal);text-decoration:none}
 
-/* ── Top bar ───────────────────────────────────────── */
+/* ── Top Bar ─────────────────────────────────────── */
 .topbar{position:sticky;top:0;z-index:40;
   display:flex;align-items:center;justify-content:space-between;
-  padding:12px 24px;
-  background:rgba(10,14,26,0.85);backdrop-filter:blur(20px);
+  padding:14px 24px;gap:16px;
+  background:rgba(10,14,26,0.88);backdrop-filter:blur(20px);
   border-bottom:1px solid var(--border)}
-.topbar-title{font-weight:700;font-size:0.85rem;letter-spacing:0.12em;color:var(--text)}
-.topbar-title span{color:var(--teal)}
-.floor-badge{display:flex;align-items:center;gap:8px;
-  padding:4px 14px;border-radius:20px;font-size:0.75rem;font-weight:600;
-  background:rgba(29,158,117,0.12);color:var(--teal);border:1px solid rgba(29,158,117,0.25)}
-.floor-badge .dot{width:6px;height:6px;border-radius:50%;background:var(--teal);
-  animation:pulse-dot 2s ease infinite}
-@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:0.3}}
-.topbar-controls{display:flex;align-items:center;gap:16px}
-.topbar-controls label{font-size:0.7rem;color:var(--muted);display:flex;align-items:center;gap:6px}
-.topbar-controls input[type=range]{width:100px;accent-color:var(--teal);cursor:pointer}
+.state-display{text-align:center;flex:1}
+.state-label{font-size:1.6rem;font-weight:800;letter-spacing:0.04em;
+  transition:color 0.4s}
+.state-desc{font-size:0.68rem;color:var(--muted);margin-top:2px;
+  transition:color 0.3s}
+.topbar-left{display:flex;align-items:center;gap:8px;min-width:140px}
+.router-badge{font-size:0.6rem;color:var(--muted);
+  background:rgba(255,255,255,0.04);padding:3px 10px;border-radius:8px;
+  border:1px solid var(--border);max-width:160px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.topbar-right{display:flex;align-items:center;gap:12px;min-width:200px;justify-content:flex-end}
+.topbar-right label{font-size:0.65rem;color:var(--muted);display:flex;align-items:center;gap:5px}
+.topbar-right input[type=range]{width:80px;accent-color:var(--idle);cursor:pointer}
 .mute-btn{background:var(--glass);border:1px solid var(--glass-border);color:var(--muted);
-  padding:4px 10px;border-radius:8px;font-family:var(--font);font-size:0.7rem;cursor:pointer;
+  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.7rem;cursor:pointer;
   transition:all 0.2s}
-.mute-btn:hover{background:var(--glass-hover);border-color:var(--glass-border-hover);color:var(--text)}
-.mute-btn.active{color:var(--alert);border-color:rgba(255,68,68,0.3)}
-.sim-toggle{display:flex;align-items:center;gap:6px}
-.sim-toggle input{accent-color:var(--amber)}
-.sim-label{font-size:0.65rem;color:var(--amber);font-weight:700;display:none}
-.sim-label.visible{display:inline}
+.mute-btn:hover{background:var(--glass-hover);color:var(--text)}
+.mute-btn.active{color:var(--motion);border-color:rgba(229,62,62,0.3)}
+.sim-toggle{display:flex;align-items:center;gap:4px}
+.sim-toggle input{accent-color:var(--watching)}
+.sim-badge{font-size:0.6rem;color:var(--watching);font-weight:700;display:none}
+.sim-badge.visible{display:inline}
 
-/* ── Layout ────────────────────────────────────────── */
-.container{max-width:1100px;margin:0 auto;padding:16px 20px 40px}
-.section-gap{margin-bottom:20px}
+/* ── Calibration Bar ─────────────────────────────── */
+.cal-bar-wrap{overflow:hidden;transition:max-height 0.6s ease,opacity 0.4s;
+  max-height:60px;opacity:1}
+.cal-bar-wrap.hidden{max-height:0;opacity:0}
+.cal-bar{background:var(--surface);padding:10px 24px;
+  border-bottom:1px solid var(--border)}
+.cal-bar-inner{display:flex;align-items:center;gap:14px;max-width:900px;margin:0 auto}
+.cal-bar-track{flex:1;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden}
+.cal-bar-fill{height:100%;border-radius:3px;background:var(--cal);
+  transition:width 0.5s ease,background 0.3s}
+.cal-bar-fill.done{background:var(--idle)}
+.cal-bar-text{font-size:0.68rem;color:var(--muted);white-space:nowrap}
+.cal-bar-text.done{color:var(--idle)}
 
-/* ── Floor Map (SVG) ───────────────────────────────── */
-.floor-map{background:var(--surface);border:1px solid var(--border);border-radius:16px;
-  padding:16px;position:relative;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.floor-map svg{width:100%;height:auto}
+/* ── Layout ──────────────────────────────────────── */
+.container{max-width:960px;margin:0 auto;padding:16px 20px 48px}
+.gap{margin-bottom:16px}
 
-/* ── Node Cards ────────────────────────────────────── */
-.node-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+/* ── Node Cards ──────────────────────────────────── */
+.node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
 .node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:20px;position:relative;overflow:hidden;transition:all 0.3s;
+  overflow:hidden;position:relative;transition:all 0.3s;
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
 .node-card:hover{background:var(--glass-hover);border-color:var(--glass-border-hover);
-  transform:translateY(-4px)}
-.node-card.motion{border-color:rgba(255,68,68,0.4);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 30px rgba(255,68,68,0.08)}
-.node-card .offline-overlay{position:absolute;inset:0;background:rgba(255,30,30,0.12);
-  display:none;align-items:center;justify-content:center;border-radius:16px;
-  font-weight:700;font-size:1rem;color:var(--alert);letter-spacing:0.1em;z-index:5;
-  backdrop-filter:blur(4px)}
-.node-card.offline .offline-overlay{display:flex}
-.node-header{display:flex;align-items:center;gap:10px;margin-bottom:16px}
-.node-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-.node-name{font-weight:600;font-size:0.85rem;letter-spacing:0.06em;text-transform:uppercase}
-.node-status{margin-left:auto;font-size:0.65rem;padding:2px 8px;border-radius:6px;
-  font-weight:700;letter-spacing:0.08em}
-.node-status.idle{background:rgba(107,122,153,0.15);color:var(--muted)}
-.node-status.motion{background:rgba(255,68,68,0.15);color:var(--alert);animation:status-blink 0.8s ease infinite}
-@keyframes status-blink{0%,100%{opacity:1}50%{opacity:0.5}}
-.gauge-wrap{display:flex;justify-content:center;margin-bottom:12px}
-.gauge-wrap svg{width:120px;height:120px}
-.gauge-bg{fill:none;stroke:rgba(255,255,255,0.06);stroke-width:8}
-.gauge-fill{fill:none;stroke-width:8;stroke-linecap:round;
-  transition:stroke-dashoffset 0.6s cubic-bezier(0.16,1,0.3,1)}
-.gauge-text{font-family:var(--font);font-size:18px;font-weight:700;fill:var(--text);text-anchor:middle}
-.gauge-label{font-family:var(--font);font-size:9px;fill:var(--muted);text-anchor:middle}
-.node-metrics{display:flex;justify-content:space-between;font-size:0.7rem}
-.metric-item{text-align:center}
-.metric-value{font-weight:600;color:var(--text)}
-.metric-label{color:var(--muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.05em}
-.router-note{text-align:center;font-size:0.65rem;color:var(--muted);padding:8px 0;
-  border-top:1px solid var(--border);margin-top:4px}
+  transform:translateY(-3px)}
+.node-card.motion-active{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),
+  0 0 24px rgba(229,62,62,0.1)}
+.node-bar{height:4px;width:100%}
+.node-body{padding:16px 18px 14px}
+.node-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.node-name{font-size:0.72rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+.online-dot{width:7px;height:7px;border-radius:50%;transition:background 0.3s}
+.online-dot.on{background:var(--idle);box-shadow:0 0 6px rgba(56,161,105,0.5)}
+.online-dot.off{background:var(--motion)}
+.node-signal{font-size:2rem;font-weight:800;text-align:center;margin-bottom:2px;
+  letter-spacing:-0.02em}
+.node-smoothed{font-size:0.65rem;color:var(--muted);text-align:center;margin-bottom:10px}
+.node-row{display:flex;justify-content:space-between;align-items:center}
+.z-badge{font-size:0.65rem;font-weight:600;padding:2px 8px;border-radius:6px;
+  transition:all 0.3s}
+.z-badge.green{background:rgba(56,161,105,0.12);color:var(--idle)}
+.z-badge.amber{background:rgba(217,119,6,0.12);color:var(--watching)}
+.z-badge.red{background:rgba(229,62,62,0.12);color:var(--motion)}
+.node-state{font-size:0.6rem;font-weight:700;letter-spacing:0.08em;text-transform:uppercase}
+/* Cal overlay */
+.node-cal-overlay{position:absolute;inset:0;background:rgba(10,14,26,0.85);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  border-radius:16px;z-index:3;transition:opacity 0.4s}
+.node-cal-overlay.hidden{opacity:0;pointer-events:none}
+.node-cal-overlay .cal-text{font-size:0.7rem;color:var(--cal);margin-bottom:6px}
+.node-cal-overlay .cal-progress{width:60%;height:4px;background:rgba(255,255,255,0.06);
+  border-radius:2px;overflow:hidden}
+.node-cal-overlay .cal-progress-fill{height:100%;background:var(--cal);border-radius:2px;
+  transition:width 0.3s}
+/* Offline overlay */
+.node-offline{position:absolute;inset:0;background:rgba(229,62,62,0.1);
+  display:none;align-items:center;justify-content:center;border-radius:16px;z-index:4;
+  backdrop-filter:blur(3px)}
+.node-offline .off-text{color:var(--motion);font-weight:700;font-size:0.8rem;
+  letter-spacing:0.1em}
+.node-offline .off-sub{color:var(--muted);font-size:0.6rem;margin-top:4px}
+.node-card.offline .node-offline{display:flex;flex-direction:column}
 
-/* ── Fused Result ──────────────────────────────────── */
-.fused-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:24px;position:relative;overflow:hidden;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.08);transition:all 0.4s}
-.fused-card.alert{border-color:rgba(255,68,68,0.5);
-  animation:fused-pulse 1.5s ease infinite}
-@keyframes fused-pulse{0%,100%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 20px rgba(255,68,68,0.05)}
-  50%{box-shadow:inset 0 1px 0 rgba(255,255,255,0.08),0 0 40px rgba(255,68,68,0.15)}}
-.fused-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
-.fused-title{font-weight:700;font-size:0.85rem;letter-spacing:0.08em;text-transform:uppercase}
-.fused-source{font-size:0.7rem;color:var(--muted)}
-.fused-source span{color:var(--teal);font-weight:600}
-.conf-bar-wrap{position:relative;height:28px;background:rgba(255,255,255,0.04);
-  border-radius:14px;overflow:hidden;margin-bottom:10px}
-.conf-bar-fill{height:100%;border-radius:14px;
-  transition:width 0.6s cubic-bezier(0.16,1,0.3,1);position:relative}
-.conf-bar-fill.low{background:linear-gradient(90deg,rgba(29,158,117,0.5),rgba(29,158,117,0.8))}
-.conf-bar-fill.mid{background:linear-gradient(90deg,rgba(186,117,23,0.5),rgba(186,117,23,0.9))}
-.conf-bar-fill.high{background:linear-gradient(90deg,rgba(255,68,68,0.5),rgba(255,68,68,0.9))}
-.conf-bar-label{position:absolute;right:10px;top:50%;transform:translateY(-50%);
-  font-size:0.75rem;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)}
-.conf-tiers{display:flex;justify-content:space-between;font-size:0.6rem;color:var(--muted)}
-.conf-tiers span{padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.03)}
-/* Ripple behind bar on motion */
-.fused-ripple{position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity 0.4s}
-.fused-card.alert .fused-ripple{opacity:1}
-.fused-ripple::before,.fused-ripple::after{content:'';position:absolute;
-  border-radius:50%;border:1px solid rgba(255,68,68,0.15);
-  animation:ripple-expand 2.5s ease-out infinite}
-.fused-ripple::before{width:200px;height:200px;top:50%;left:50%;
-  transform:translate(-50%,-50%)}
-.fused-ripple::after{width:300px;height:300px;top:50%;left:50%;
-  transform:translate(-50%,-50%);animation-delay:0.8s}
-@keyframes ripple-expand{0%{transform:translate(-50%,-50%) scale(0.3);opacity:1}
-  100%{transform:translate(-50%,-50%) scale(1.5);opacity:0}}
-
-/* ── Chart ─────────────────────────────────────────── */
-.chart-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+/* ── Confidence ──────────────────────────────────── */
+.conf-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
   padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.chart-card canvas{width:100%!important;height:220px!important}
-.chart-title{font-size:0.75rem;font-weight:600;letter-spacing:0.06em;
-  text-transform:uppercase;color:var(--muted);margin-bottom:12px}
+.conf-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.conf-title{font-size:0.72rem;font-weight:600;letter-spacing:0.06em;
+  text-transform:uppercase;color:var(--muted)}
+.conf-source{font-size:0.65rem;color:var(--muted)}
+.conf-source span{font-weight:600}
+.conf-track{position:relative;height:24px;background:rgba(255,255,255,0.04);
+  border-radius:12px;overflow:hidden;margin-bottom:8px}
+.conf-fill{height:100%;border-radius:12px;transition:width 0.4s ease,background 0.3s;
+  position:relative}
+.conf-fill.green{background:linear-gradient(90deg,rgba(56,161,105,0.4),rgba(56,161,105,0.8))}
+.conf-fill.amber{background:linear-gradient(90deg,rgba(232,145,42,0.4),rgba(232,145,42,0.9))}
+.conf-fill.red{background:linear-gradient(90deg,rgba(229,62,62,0.4),rgba(229,62,62,0.9))}
+.conf-pct{position:absolute;right:8px;top:50%;transform:translateY(-50%);
+  font-size:0.7rem;font-weight:700;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,0.5)}
+.conf-ticks{display:flex;justify-content:space-between;font-size:0.58rem;color:var(--dim)}
+.conf-ticks span{padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.02)}
+.cooldown-note{font-size:0.62rem;color:var(--watching);margin-top:6px;
+  display:none;font-weight:600}
+.cooldown-note.visible{display:block}
 
-/* ── Event Log ─────────────────────────────────────── */
+/* ── Chart ───────────────────────────────────────── */
+.chart-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:18px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
+.chart-labels{display:flex;gap:16px;margin-bottom:8px}
+.chart-lbl{font-size:0.62rem;font-weight:600;display:flex;align-items:center;gap:4px}
+.chart-lbl .swatch{width:10px;height:3px;border-radius:2px}
+.chart-card canvas{width:100%!important;height:200px!important}
+
+/* ── History Log ─────────────────────────────────── */
 .log-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
   padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.08)}
-.log-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.log-title{font-size:0.75rem;font-weight:600;letter-spacing:0.06em;
+.log-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.log-title{font-size:0.72rem;font-weight:600;letter-spacing:0.06em;
   text-transform:uppercase;color:var(--muted)}
-.log-actions{display:flex;gap:8px}
+.log-actions{display:flex;gap:6px}
 .log-actions button{background:var(--glass);border:1px solid var(--glass-border);
-  color:var(--muted);padding:3px 10px;border-radius:6px;font-family:var(--font);
-  font-size:0.65rem;cursor:pointer;transition:all 0.2s}
-.log-actions button:hover{background:var(--glass-hover);color:var(--text);
-  border-color:var(--glass-border-hover)}
-.log-list{max-height:160px;overflow-y:auto;font-size:0.68rem;line-height:1.8}
-.log-list::-webkit-scrollbar{width:4px}
-.log-list::-webkit-scrollbar-track{background:transparent}
+  color:var(--muted);padding:3px 8px;border-radius:6px;font-family:var(--font);
+  font-size:0.6rem;cursor:pointer;transition:all 0.2s}
+.log-actions button:hover{background:var(--glass-hover);color:var(--text)}
+.log-list{max-height:200px;overflow-y:auto;font-size:0.62rem;line-height:1.8}
+.log-list::-webkit-scrollbar{width:3px}
 .log-list::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
-.log-entry{padding:2px 0;border-bottom:1px solid var(--border);color:var(--muted)}
-.log-entry .tag-motion{color:var(--alert);font-weight:700}
-.log-entry .tag-idle{color:var(--teal);font-weight:600}
-.log-entry .conf{color:var(--amber)}
+.log-entry{display:flex;align-items:center;gap:8px;padding:3px 0;
+  border-bottom:1px solid var(--border);animation:fade-in 0.3s ease}
+@keyframes fade-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+.log-ts{color:var(--dim);min-width:64px}
+.log-state-badge{padding:1px 6px;border-radius:4px;font-weight:700;font-size:0.58rem;
+  letter-spacing:0.04em;text-transform:uppercase}
+.log-conf-bar{width:60px;height:4px;background:rgba(255,255,255,0.06);border-radius:2px;
+  overflow:hidden;flex-shrink:0}
+.log-conf-fill{height:100%;border-radius:2px;transition:width 0.3s}
+.log-src{color:var(--muted);flex:1}
+.log-zscores{color:var(--dim);font-size:0.55rem}
 
-/* ── Offline banner ────────────────────────────────── */
-.offline-banner{position:fixed;top:60px;left:50%;transform:translateX(-50%);
-  background:rgba(255,68,68,0.15);border:1px solid rgba(255,68,68,0.3);
-  color:var(--alert);padding:8px 20px;border-radius:10px;font-size:0.75rem;
+/* ── Offline banner ──────────────────────────────── */
+.offline-banner{position:fixed;top:58px;left:50%;transform:translateX(-50%);
+  background:rgba(229,62,62,0.15);border:1px solid rgba(229,62,62,0.3);
+  color:var(--motion);padding:6px 18px;border-radius:10px;font-size:0.7rem;
   font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px)}
 .offline-banner.visible{display:block;animation:slide-down 0.3s ease}
-@keyframes slide-down{from{opacity:0;transform:translateX(-50%) translateY(-10px)}
+@keyframes slide-down{from{opacity:0;transform:translateX(-50%) translateY(-8px)}
   to{opacity:1;transform:translateX(-50%) translateY(0)}}
 
-/* ── Responsive ────────────────────────────────────── */
+/* ── Responsive ──────────────────────────────────── */
 @media(max-width:768px){
-  .topbar{flex-wrap:wrap;gap:8px;padding:10px 14px}
-  .topbar-title{font-size:0.72rem;order:1;width:100%;text-align:center}
-  .floor-badge{order:2}
-  .topbar-controls{order:3;flex-wrap:wrap;justify-content:center}
+  .topbar{flex-wrap:wrap;padding:10px 14px}
+  .topbar-left{order:2;min-width:auto}
+  .state-display{order:1;width:100%;flex:none}
+  .topbar-right{order:3;flex-wrap:wrap;justify-content:center;min-width:auto}
   .node-grid{grid-template-columns:1fr}
-  .container{padding:12px}
+  .state-label{font-size:1.2rem}
+  .container{padding:10px 12px 40px}
 }
 </style>
 </head>
 <body>
 
-<!-- ── OFFLINE BANNER ──────────────────────────────── -->
-<div class="offline-banner" id="offlineBanner">⚠ SERVER UNREACHABLE — RETRYING…</div>
+<div class="offline-banner" id="offlineBanner">SERVER UNREACHABLE</div>
 
-<!-- ── TOP BAR ─────────────────────────────────────── -->
+<!-- ── TOP BAR ────────────────────────────────────── -->
 <nav class="topbar">
-  <div class="topbar-title">[ HUMAN <span>WIFI</span> DETECTOR — 2 FLOOR ]</div>
-  <div class="floor-badge"><div class="dot"></div><span id="floorBadge">1ST FLOOR MESH: 0/3 ACTIVE</span></div>
-  <div class="topbar-controls">
+  <div class="topbar-left">
+    <div class="router-badge" id="routerBadge" title="Connected router">--</div>
+  </div>
+  <div class="state-display">
+    <div class="state-label" id="stateLabel">CALIBRATING</div>
+    <div class="state-desc" id="stateDesc">Learning your room's baseline signal...</div>
+  </div>
+  <div class="topbar-right">
     <label>THR <span id="thrVal">2.0</span>
       <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
     </label>
-    <button class="mute-btn" id="muteBtn" title="Toggle sound">🔊</button>
+    <button class="mute-btn" id="muteBtn">&#128266;</button>
     <div class="sim-toggle">
       <label><input type="checkbox" id="simToggle"> SIM</label>
-      <span class="sim-label" id="simLabel">[SIM]</span>
+      <span class="sim-badge" id="simBadge">[SIM]</span>
     </div>
   </div>
 </nav>
 
+<!-- ── CALIBRATION BAR ────────────────────────────── -->
+<div class="cal-bar-wrap" id="calBarWrap">
+  <div class="cal-bar">
+    <div class="cal-bar-inner">
+      <div class="cal-bar-text" id="calText">Calibrating... 20s remaining</div>
+      <div class="cal-bar-track"><div class="cal-bar-fill" id="calFill" style="width:0%"></div></div>
+    </div>
+  </div>
+</div>
+
 <main class="container">
 
-  <!-- ── FLOOR MAP ───────────────────────────────────── -->
-  <section class="floor-map section-gap">
-    <svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
-      <!-- Ground Floor -->
-      <rect x="40" y="120" width="720" height="65" rx="8" fill="rgba(255,255,255,0.02)"
-            stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-      <text x="400" y="148" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="9" fill="#6b7a99" letter-spacing="0.08em">GROUND FLOOR</text>
-      <!-- Router icon -->
-      <circle cx="400" cy="160" r="8" fill="rgba(107,122,153,0.2)" stroke="#6b7a99" stroke-width="1"/>
-      <text x="400" y="163" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="7" fill="#6b7a99">R</text>
-      <text x="400" y="180" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="7" fill="#4a5568">Router — reference only</text>
-
-      <!-- First Floor -->
-      <rect x="40" y="10" width="720" height="100" rx="8" fill="rgba(29,158,117,0.04)"
-            stroke="rgba(29,158,117,0.15)" stroke-width="1"/>
-      <text x="400" y="28" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="9" fill="rgba(29,158,117,0.6)" letter-spacing="0.08em">1ST FLOOR — SENSING MESH</text>
-
-      <!-- Links between nodes (dashed lines) -->
-      <line id="link-ext-lap" x1="160" y1="70" x2="400" y2="70"
-            stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="4,4"/>
-      <line id="link-lap-pho" x1="400" y1="70" x2="640" y2="70"
-            stroke="rgba(255,255,255,0.08)" stroke-width="1" stroke-dasharray="4,4"/>
-      <line id="link-ext-pho" x1="160" y1="70" x2="640" y2="70"
-            stroke="rgba(255,255,255,0.04)" stroke-width="1" stroke-dasharray="6,6"/>
-
-      <!-- Vertical link from router to laptop (dim) -->
-      <line x1="400" y1="120" x2="400" y2="82" stroke="rgba(107,122,153,0.1)"
-            stroke-width="1" stroke-dasharray="3,5"/>
-
-      <!-- Extender node -->
-      <circle id="map-ext" cx="160" cy="70" r="12" fill="rgba(29,158,117,0.15)"
-              stroke="var(--teal)" stroke-width="1.5"/>
-      <text x="160" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="8" fill="var(--teal)" font-weight="600">E</text>
-      <text x="160" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="7" fill="rgba(29,158,117,0.6)">Extender</text>
-
-      <!-- Laptop node -->
-      <circle id="map-lap" cx="400" cy="70" r="12" fill="rgba(55,138,221,0.15)"
-              stroke="var(--blue)" stroke-width="1.5"/>
-      <text x="400" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="8" fill="var(--blue)" font-weight="600">L</text>
-      <text x="400" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="7" fill="rgba(55,138,221,0.6)">Laptop</text>
-
-      <!-- Phone node -->
-      <circle id="map-pho" cx="640" cy="70" r="12" fill="rgba(186,117,23,0.15)"
-              stroke="var(--amber)" stroke-width="1.5"/>
-      <text x="640" y="74" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="8" fill="var(--amber)" font-weight="600">P</text>
-      <text x="640" y="98" text-anchor="middle" font-family="JetBrains Mono,monospace"
-            font-size="7" fill="rgba(186,117,23,0.6)">Phone</text>
-
-      <!-- Pulse rings for motion detection (hidden by default) -->
-      <circle id="pulse-ext" cx="160" cy="70" r="20" fill="none"
-              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
-      <circle id="pulse-lap" cx="400" cy="70" r="20" fill="none"
-              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
-      <circle id="pulse-pho" cx="640" cy="70" r="20" fill="none"
-              stroke="var(--alert)" stroke-width="1.5" opacity="0"/>
-    </svg>
-  </section>
-
   <!-- ── NODE CARDS ──────────────────────────────────── -->
-  <section class="node-grid section-gap">
+  <section class="node-grid gap">
     <!-- Extender -->
     <article class="node-card" id="card-extender">
-      <div class="offline-overlay">OFFLINE</div>
-      <div class="node-header">
-        <div class="node-dot" style="background:var(--teal)"></div>
-        <div class="node-name" style="color:var(--teal)">Extender</div>
-        <div class="node-status idle" id="status-extender">IDLE</div>
+      <div class="node-bar" style="background:var(--extender)"></div>
+      <div class="node-body">
+        <div class="node-header">
+          <span class="node-name" style="color:var(--extender)">Extender</span>
+          <div class="online-dot on" id="dot-extender"></div>
+        </div>
+        <div class="node-signal" id="sig-extender">--</div>
+        <div class="node-smoothed">Smoothed: <span id="smooth-extender">--</span></div>
+        <div class="node-row">
+          <span class="z-badge green" id="zbadge-extender">z: 0.00</span>
+          <span class="node-state" id="nstate-extender" style="color:var(--idle)">IDLE</span>
+        </div>
       </div>
-      <div class="gauge-wrap">
-        <svg viewBox="0 0 120 120">
-          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
-          <circle class="gauge-fill" id="gauge-extender" cx="60" cy="60" r="48"
-                  stroke="var(--teal)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
-                  transform="rotate(-90 60 60)"/>
-          <text class="gauge-text" x="60" y="58" id="gaugeText-extender">0%</text>
-          <text class="gauge-label" x="60" y="74">SIGNAL</text>
-        </svg>
+      <div class="node-cal-overlay" id="cal-extender">
+        <div class="cal-text">Calibrating...</div>
+        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-extender" style="width:0%"></div></div>
       </div>
-      <div class="node-metrics">
-        <div class="metric-item"><div class="metric-value" id="sig-extender">0</div><div class="metric-label">Signal</div></div>
-        <div class="metric-item"><div class="metric-value" id="z-extender">0.00</div><div class="metric-label">Z-Score</div></div>
-        <div class="metric-item"><div class="metric-value" id="last-extender">—</div><div class="metric-label">Last Seen</div></div>
+      <div class="node-offline">
+        <div class="off-text">OFFLINE</div>
+        <div class="off-sub" id="lastseen-extender">--</div>
       </div>
     </article>
 
     <!-- Laptop -->
     <article class="node-card" id="card-laptop">
-      <div class="offline-overlay">OFFLINE</div>
-      <div class="node-header">
-        <div class="node-dot" style="background:var(--blue)"></div>
-        <div class="node-name" style="color:var(--blue)">Laptop</div>
-        <div class="node-status idle" id="status-laptop">IDLE</div>
+      <div class="node-bar" style="background:var(--laptop)"></div>
+      <div class="node-body">
+        <div class="node-header">
+          <span class="node-name" style="color:var(--laptop)">Laptop</span>
+          <div class="online-dot on" id="dot-laptop"></div>
+        </div>
+        <div class="node-signal" id="sig-laptop">--</div>
+        <div class="node-smoothed">Smoothed: <span id="smooth-laptop">--</span></div>
+        <div class="node-row">
+          <span class="z-badge green" id="zbadge-laptop">z: 0.00</span>
+          <span class="node-state" id="nstate-laptop" style="color:var(--idle)">IDLE</span>
+        </div>
       </div>
-      <div class="gauge-wrap">
-        <svg viewBox="0 0 120 120">
-          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
-          <circle class="gauge-fill" id="gauge-laptop" cx="60" cy="60" r="48"
-                  stroke="var(--blue)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
-                  transform="rotate(-90 60 60)"/>
-          <text class="gauge-text" x="60" y="58" id="gaugeText-laptop">0%</text>
-          <text class="gauge-label" x="60" y="74">SIGNAL</text>
-        </svg>
+      <div class="node-cal-overlay" id="cal-laptop">
+        <div class="cal-text">Calibrating...</div>
+        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-laptop" style="width:0%"></div></div>
       </div>
-      <div class="node-metrics">
-        <div class="metric-item"><div class="metric-value" id="sig-laptop">0</div><div class="metric-label">Signal</div></div>
-        <div class="metric-item"><div class="metric-value" id="z-laptop">0.00</div><div class="metric-label">Z-Score</div></div>
-        <div class="metric-item"><div class="metric-value" id="last-laptop">—</div><div class="metric-label">Last Seen</div></div>
+      <div class="node-offline">
+        <div class="off-text">OFFLINE</div>
+        <div class="off-sub" id="lastseen-laptop">--</div>
       </div>
     </article>
 
     <!-- Phone -->
     <article class="node-card" id="card-phone">
-      <div class="offline-overlay">OFFLINE</div>
-      <div class="node-header">
-        <div class="node-dot" style="background:var(--amber)"></div>
-        <div class="node-name" style="color:var(--amber)">Phone</div>
-        <div class="node-status idle" id="status-phone">IDLE</div>
+      <div class="node-bar" style="background:var(--phone)"></div>
+      <div class="node-body">
+        <div class="node-header">
+          <span class="node-name" style="color:var(--phone)">Phone</span>
+          <div class="online-dot on" id="dot-phone"></div>
+        </div>
+        <div class="node-signal" id="sig-phone">--</div>
+        <div class="node-smoothed">Smoothed: <span id="smooth-phone">--</span></div>
+        <div class="node-row">
+          <span class="z-badge green" id="zbadge-phone">z: 0.00</span>
+          <span class="node-state" id="nstate-phone" style="color:var(--idle)">IDLE</span>
+        </div>
       </div>
-      <div class="gauge-wrap">
-        <svg viewBox="0 0 120 120">
-          <circle class="gauge-bg" cx="60" cy="60" r="48"/>
-          <circle class="gauge-fill" id="gauge-phone" cx="60" cy="60" r="48"
-                  stroke="var(--amber)" stroke-dasharray="301.6" stroke-dashoffset="301.6"
-                  transform="rotate(-90 60 60)"/>
-          <text class="gauge-text" x="60" y="58" id="gaugeText-phone">0%</text>
-          <text class="gauge-label" x="60" y="74">SIGNAL</text>
-        </svg>
+      <div class="node-cal-overlay" id="cal-phone">
+        <div class="cal-text">Calibrating...</div>
+        <div class="cal-progress"><div class="cal-progress-fill" id="calprog-phone" style="width:0%"></div></div>
       </div>
-      <div class="node-metrics">
-        <div class="metric-item"><div class="metric-value" id="sig-phone">0</div><div class="metric-label">Signal</div></div>
-        <div class="metric-item"><div class="metric-value" id="z-phone">0.00</div><div class="metric-label">Z-Score</div></div>
-        <div class="metric-item"><div class="metric-value" id="last-phone">—</div><div class="metric-label">Last Seen</div></div>
+      <div class="node-offline">
+        <div class="off-text">OFFLINE</div>
+        <div class="off-sub" id="lastseen-phone">--</div>
       </div>
     </article>
   </section>
 
-  <div class="router-note">Router (ground floor) used as reference only — excluded from motion scoring.</div>
-
-  <!-- ── FUSED RESULT ────────────────────────────────── -->
-  <section class="fused-card section-gap" id="fusedCard" style="margin-top:16px">
-    <div class="fused-ripple"></div>
-    <div class="fused-header">
-      <div class="fused-title">Fused Detection</div>
-      <div class="fused-source">Source: <span id="fusedSource">none</span></div>
+  <!-- ── CONFIDENCE ──────────────────────────────────── -->
+  <section class="conf-card gap">
+    <div class="conf-header">
+      <div class="conf-title">Confidence</div>
+      <div class="conf-source">Triggered by: <span id="confSource">none</span></div>
     </div>
-    <div class="conf-bar-wrap">
-      <div class="conf-bar-fill low" id="confBar" style="width:0%">
-        <span class="conf-bar-label" id="confLabel">0%</span>
+    <div class="conf-track">
+      <div class="conf-fill green" id="confFill" style="width:0%">
+        <span class="conf-pct" id="confPct">0%</span>
       </div>
     </div>
-    <div class="conf-tiers">
-      <span>Single node (0.33)</span>
-      <span>Two nodes (0.67)</span>
-      <span>All nodes (1.0)</span>
+    <div class="conf-ticks">
+      <span>0</span><span>Activity (0.25)</span><span>Motion (0.65)</span><span>Confirmed (1.0)</span>
     </div>
+    <div class="cooldown-note" id="cooldownNote">Re-arming...</div>
   </section>
 
   <!-- ── CHART ───────────────────────────────────────── -->
-  <section class="chart-card section-gap">
-    <div class="chart-title">Signal History — Last 60 Readings</div>
+  <section class="chart-card gap">
+    <div class="chart-labels">
+      <div class="chart-lbl"><span class="swatch" style="background:var(--laptop)"></span> Laptop</div>
+      <div class="chart-lbl"><span class="swatch" style="background:var(--phone)"></span> Phone</div>
+      <div class="chart-lbl"><span class="swatch" style="background:var(--extender)"></span> Extender</div>
+    </div>
     <canvas id="signalChart"></canvas>
   </section>
 
-  <!-- ── EVENT LOG ───────────────────────────────────── -->
+  <!-- ── HISTORY LOG ─────────────────────────────────── -->
   <section class="log-card">
     <div class="log-header">
-      <div class="log-title">Event Log</div>
+      <div class="log-title">Event History</div>
       <div class="log-actions">
-        <button id="clearLog">CLEAR</button>
+        <button id="clearHist">CLEAR</button>
         <button id="exportCsv">EXPORT CSV</button>
       </div>
     </div>
@@ -390,412 +353,409 @@ a{color:var(--teal);text-decoration:none}
 
 <script>
 // ═══════════════════════════════════════════════════════
-// STATE
+// CONSTANTS & STATE
 // ═══════════════════════════════════════════════════════
-const CIRC = 2 * Math.PI * 48; // gauge circumference
-const MAX_HISTORY = 60;
-const NODE_KEYS = ['extender', 'laptop', 'phone'];
-const NODE_COLORS = { extender: '#1D9E75', laptop: '#378ADD', phone: '#BA7517' };
+const KEYS = ['extender','laptop','phone'];
+const NCOL = {extender:'#1D9E75',laptop:'#378ADD',phone:'#BA7517'};
+const SCOL = {CALIBRATING:'#888',IDLE:'#38A169',WATCHING:'#D97706',
+              ACTIVITY:'#E8912A',MOTION:'#E53E3E',CONFIRMED:'#ff2020'};
+const SDESC = {
+  CALIBRATING:"Learning your room's baseline signal...",
+  IDLE:"No movement detected. All clear.",
+  WATCHING:"Signal fluctuation noticed. Monitoring...",
+  ACTIVITY:"Activity detected on one sensor.",
+  MOTION:"Motion confirmed on multiple sensors.",
+  CONFIRMED:"Strong motion -- all sensors agree."
+};
+const NWEIGHTS = {laptop:0.40,phone:0.35,extender:0.25};
+const MAX_H = 60;
 
-let muted = false;
-let simMode = false;
-let failStrikes = 0;
-let lastMotionState = false;
-let history = { extender: [], laptop: [], phone: [] };
-let motionBands = [];
+let muted = false, simMode = false, failStrikes = 0;
+let lastState = '', calDone = false;
+let history = {extender:[],laptop:[],phone:[]};
+let timeLabels = [];
 let events = [];
 
 // Sim state
-let simTick = 0;
-let simBurstStart = 0;
-let simBursting = false;
-let simWindows = { extender: [], laptop: [], phone: [] };
-let simConsec = { extender: 0, laptop: 0, phone: 0 };
+let simTick=0,simBursting=false,simBurstStart=0;
+let simWin={extender:[],laptop:[],phone:[]};
+let simEma={extender:null,laptop:null,phone:null};
+let simConsec={extender:0,laptop:0,phone:0};
+let simCalCount={extender:0,laptop:0,phone:0};
+let simBaseline={extender:{m:0,s:1},laptop:{m:0,s:1},phone:{m:0,s:1}};
+let simCalBuf={extender:[],laptop:[],phone:[]};
 
-// Audio context
-let audioCtx = null;
-function getAudio() {
-  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  return audioCtx;
-}
-
-function beep(freq, duration = 80) {
-  if (muted) return;
-  try {
-    const ctx = getAudio();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
-    gain.gain.value = 0.08;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.start();
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration / 1000);
-    osc.stop(ctx.currentTime + duration / 1000 + 0.05);
-  } catch(e) {}
-}
-
-function tripleBeep() {
-  beep(440, 60);
-  setTimeout(() => beep(440, 60), 100);
-  setTimeout(() => beep(440, 60), 200);
-}
+// Audio
+let audioCtx=null;
+function getAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx}
+function beep(freq,dur=80){
+  if(muted)return;
+  try{const c=getAudio(),o=c.createOscillator(),g=c.createGain();
+    o.type='sine';o.frequency.value=freq;g.gain.value=0.06;
+    o.connect(g);g.connect(c.destination);o.start();
+    g.gain.exponentialRampToValueAtTime(0.001,c.currentTime+dur/1000);
+    o.stop(c.currentTime+dur/1000+0.05)}catch(e){}}
+function confirmedBeep(){beep(330,80);setTimeout(()=>beep(440,80),120);setTimeout(()=>beep(550,80),240)}
 
 // ═══════════════════════════════════════════════════════
-// DOM REFERENCES
+// DOM
 // ═══════════════════════════════════════════════════════
-const $ = id => document.getElementById(id);
-
-const thrSlider = $('thrSlider');
-const thrVal = $('thrVal');
-const muteBtn = $('muteBtn');
-const simToggle = $('simToggle');
-const simLabel = $('simLabel');
-const floorBadge = $('floorBadge');
-const offlineBanner = $('offlineBanner');
-const fusedCard = $('fusedCard');
-const confBar = $('confBar');
-const confLabel = $('confLabel');
-const fusedSource = $('fusedSource');
-const logList = $('logList');
-const clearLogBtn = $('clearLog');
-const exportCsvBtn = $('exportCsv');
+const $=id=>document.getElementById(id);
+const stateLabel=$('stateLabel'),stateDesc=$('stateDesc');
+const routerBadge=$('routerBadge');
+const thrSlider=$('thrSlider'),thrVal=$('thrVal');
+const muteBtn=$('muteBtn'),simToggle=$('simToggle'),simBadge=$('simBadge');
+const calBarWrap=$('calBarWrap'),calFill=$('calFill'),calText=$('calText');
+const confFill=$('confFill'),confPct=$('confPct'),confSource=$('confSource');
+const cooldownNote=$('cooldownNote');
+const offlineBanner=$('offlineBanner');
+const logList=$('logList');
 
 // ═══════════════════════════════════════════════════════
 // CONTROLS
 // ═══════════════════════════════════════════════════════
-thrSlider.addEventListener('input', () => {
-  thrVal.textContent = parseFloat(thrSlider.value).toFixed(1);
-  if (!simMode) {
-    fetch(`/set_threshold/${thrSlider.value}`).catch(() => {});
-  }
+thrSlider.addEventListener('input',()=>{
+  thrVal.textContent=parseFloat(thrSlider.value).toFixed(1);
+  if(!simMode)fetch(`/set_threshold/${thrSlider.value}`).catch(()=>{});
 });
-
-muteBtn.addEventListener('click', () => {
-  muted = !muted;
-  muteBtn.textContent = muted ? '🔇' : '🔊';
-  muteBtn.classList.toggle('active', muted);
+muteBtn.addEventListener('click',()=>{
+  muted=!muted;muteBtn.innerHTML=muted?'&#128263;':'&#128266;';
+  muteBtn.classList.toggle('active',muted);
 });
-
-simToggle.addEventListener('change', () => {
-  simMode = simToggle.checked;
-  simLabel.classList.toggle('visible', simMode);
-  if (simMode) {
-    simTick = 0;
-    simBurstStart = 0;
-    simBursting = false;
-    simWindows = { extender: [], laptop: [], phone: [] };
-    simConsec = { extender: 0, laptop: 0, phone: 0 };
-  }
+simToggle.addEventListener('change',()=>{
+  simMode=simToggle.checked;simBadge.classList.toggle('visible',simMode);
+  if(simMode){simTick=0;simBursting=false;
+    simWin={extender:[],laptop:[],phone:[]};
+    simEma={extender:null,laptop:null,phone:null};
+    simConsec={extender:0,laptop:0,phone:0};
+    simCalCount={extender:0,laptop:0,phone:0};
+    simCalBuf={extender:[],laptop:[],phone:[]};
+    calDone=false;calBarWrap.classList.remove('hidden');}
 });
 
 // ═══════════════════════════════════════════════════════
-// CHART.JS SETUP
+// CHART
 // ═══════════════════════════════════════════════════════
-const chartCtx = $('signalChart').getContext('2d');
-const chart = new Chart(chartCtx, {
-  type: 'line',
-  data: {
-    labels: Array(MAX_HISTORY).fill(''),
-    datasets: [
-      { label: 'Extender', data: [], borderColor: '#1D9E75', backgroundColor: 'rgba(29,158,117,0.08)',
-        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
-      { label: 'Laptop', data: [], borderColor: '#378ADD', backgroundColor: 'rgba(55,138,221,0.08)',
-        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
-      { label: 'Phone', data: [], borderColor: '#BA7517', backgroundColor: 'rgba(186,117,23,0.08)',
-        borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true }
-    ]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    animation: { duration: 300 },
-    interaction: { mode: 'index', intersect: false },
-    scales: {
-      x: { display: false },
-      y: { min: 0, max: 100, grid: { color: 'rgba(255,255,255,0.04)' },
-           ticks: { color: '#6b7a99', font: { family: 'JetBrains Mono', size: 10 } } }
+const chartCtx=$('signalChart').getContext('2d');
+const chart=new Chart(chartCtx,{
+  type:'line',
+  data:{labels:[],datasets:[
+    {label:'Laptop',data:[],borderColor:'#378ADD',backgroundColor:'rgba(55,138,221,0.06)',
+     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
+    {label:'Phone',data:[],borderColor:'#BA7517',backgroundColor:'rgba(186,117,23,0.06)',
+     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true},
+    {label:'Extender',data:[],borderColor:'#1D9E75',backgroundColor:'rgba(29,158,117,0.06)',
+     borderWidth:1.5,pointRadius:0,tension:0.3,fill:true}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:200},
+    interaction:{mode:'index',intersect:false},
+    scales:{
+      x:{ticks:{color:'#3a4660',font:{family:'JetBrains Mono',size:8},maxTicksLimit:8},
+         grid:{color:'rgba(255,255,255,0.02)'}},
+      y:{min:0,max:100,ticks:{color:'#6b7a99',font:{family:'JetBrains Mono',size:9}},
+         grid:{color:'rgba(255,255,255,0.03)'}}
     },
-    plugins: {
-      legend: { labels: { color: '#6b7a99', font: { family: 'JetBrains Mono', size: 10 },
-                usePointStyle: true, pointStyle: 'circle' } }
-    }
+    plugins:{legend:{display:false}}
   }
 });
 
 // ═══════════════════════════════════════════════════════
-// UI UPDATE FUNCTIONS
+// UI UPDATERS
 // ═══════════════════════════════════════════════════════
-function updateGauge(key, pct) {
-  const offset = CIRC - (CIRC * Math.min(pct, 100) / 100);
-  $(`gauge-${key}`).style.strokeDashoffset = offset;
-  $(`gaugeText-${key}`).textContent = `${Math.round(pct)}%`;
+function updateState(state,cooldown){
+  stateLabel.textContent=state;
+  stateLabel.style.color=SCOL[state]||'#888';
+  stateDesc.textContent=SDESC[state]||'';
+  // Beep on state changes (not during cooldown)
+  if(state!==lastState && !cooldown){
+    if(state==='ACTIVITY')beep(220,80);
+    else if(state==='MOTION')beep(440,100);
+    else if(state==='CONFIRMED')confirmedBeep();
+  }
+  lastState=state;
 }
 
-function updateNodeCard(key, data) {
-  const now = Date.now() / 1000;
-  const card = $(`card-${key}`);
-  const statusEl = $(`status-${key}`);
-  const freshness = key === 'laptop' ? true : (now - (data.last_seen || 0)) < 5;
+function updateCalBar(nodes){
+  if(calDone)return;
+  let total=0,done=0;
+  KEYS.forEach(k=>{
+    const n=nodes[k]||{};
+    const cal=n.calibrated;
+    const overlay=$(`cal-${k}`);
+    if(cal){
+      overlay.classList.add('hidden');
+      done++;
+    }else{
+      overlay.classList.remove('hidden');
+      // Estimate progress from warmup count
+      const wb=n._warmup_count||0;
+      $(`calprog-${k}`).style.width=`${Math.min(100,wb/20*100)}%`;
+    }
+    total++;
+  });
+  const pct=Math.round(done/total*100);
+  calFill.style.width=`${pct}%`;
+  if(done===total){
+    calDone=true;
+    calFill.classList.add('done');
+    calText.textContent='Baseline set -- detection active';
+    calText.classList.add('done');
+    setTimeout(()=>calBarWrap.classList.add('hidden'),2000);
+  }else{
+    const remaining=Math.max(0,20-Math.max(...KEYS.map(k=>(nodes[k]||{})._warmup_count||0)));
+    calText.textContent=`Calibrating... ~${remaining}s remaining`;
+  }
+}
 
-  // Signal gauge
-  updateGauge(key, data.signal || 0);
-  $(`sig-${key}`).textContent = data.signal || 0;
-  $(`z-${key}`).textContent = (data.zscore || 0).toFixed(2);
+function updateNodeCard(key,n){
+  const card=$(`card-${key}`);
+  const online=n.online!==undefined?n.online:true;
+  const now=Date.now()/1000;
 
-  // Last seen
-  if (data.last_seen && data.last_seen > 0) {
-    const ago = Math.round(now - data.last_seen);
-    $(`last-${key}`).textContent = ago < 2 ? 'now' : `${ago}s ago`;
-  } else {
-    $(`last-${key}`).textContent = '—';
+  // Signal
+  $(`sig-${key}`).textContent=`${n.signal||0}%`;
+  $(`smooth-${key}`).textContent=(n.smoothed||0).toFixed(1);
+
+  // Z-score badge
+  const az=Math.abs(n.zscore||0);
+  const zb=$(`zbadge-${key}`);
+  zb.textContent=`z: ${(n.zscore||0).toFixed(2)}`;
+  zb.className='z-badge '+(az>2?'red':az>1?'amber':'green');
+
+  // State
+  const ns=$(`nstate-${key}`);
+  if(n.motion){ns.textContent='MOTION';ns.style.color='var(--motion)';
+    card.classList.add('motion-active');}
+  else{ns.textContent='IDLE';ns.style.color='var(--idle)';
+    card.classList.remove('motion-active');}
+
+  // Online/offline
+  const dot=$(`dot-${key}`);
+  if(online){dot.className='online-dot on';card.classList.remove('offline');}
+  else{
+    dot.className='online-dot off';card.classList.add('offline');
+    const ago=n.last_seen?Math.round(now-n.last_seen):0;
+    $(`lastseen-${key}`).textContent=`Last seen ${ago}s ago`;
   }
 
-  // Status
-  card.classList.toggle('offline', !freshness);
-  card.classList.toggle('motion', data.motion && freshness);
-  statusEl.textContent = data.motion ? 'MOTION' : 'IDLE';
-  statusEl.className = 'node-status ' + (data.motion ? 'motion' : 'idle');
-}
-
-function updateFloorMap(nodes) {
-  const mapIds = { extender: 'map-ext', laptop: 'map-lap', phone: 'map-pho' };
-  const pulseIds = { extender: 'pulse-ext', laptop: 'pulse-lap', phone: 'pulse-pho' };
-  const now = Date.now() / 1000;
-
-  NODE_KEYS.forEach(k => {
-    const n = nodes[k] || {};
-    const fresh = k === 'laptop' ? true : (now - (n.last_seen || 0)) < 5;
-    const mapDot = $(mapIds[k]);
-    const pulse = $(pulseIds[k]);
-
-    if (n.motion && fresh) {
-      mapDot.setAttribute('fill', 'rgba(255,68,68,0.3)');
-      mapDot.setAttribute('stroke', '#ff4444');
-      pulse.setAttribute('opacity', '1');
-      pulse.innerHTML = `<animate attributeName="r" from="14" to="30" dur="1s" repeatCount="indefinite"/>
-        <animate attributeName="opacity" from="0.8" to="0" dur="1s" repeatCount="indefinite"/>`;
-    } else {
-      mapDot.setAttribute('fill', fresh ? `${NODE_COLORS[k]}22` : 'rgba(255,255,255,0.03)');
-      mapDot.setAttribute('stroke', fresh ? NODE_COLORS[k] : '#4a5568');
-      pulse.setAttribute('opacity', '0');
-      pulse.innerHTML = '';
-    }
-  });
-
-  // Link lines — light green when both endpoints online
-  const linkPairs = [
-    ['link-ext-lap', 'extender', 'laptop'],
-    ['link-lap-pho', 'laptop', 'phone'],
-    ['link-ext-pho', 'extender', 'phone']
-  ];
-  linkPairs.forEach(([id, a, b]) => {
-    const aFresh = a === 'laptop' ? true : (now - (nodes[a]?.last_seen || 0)) < 5;
-    const bFresh = b === 'laptop' ? true : (now - (nodes[b]?.last_seen || 0)) < 5;
-    const line = $(id);
-    if (aFresh && bFresh) {
-      line.setAttribute('stroke', 'rgba(29,158,117,0.35)');
-      line.setAttribute('stroke-width', '1.5');
-    } else {
-      line.setAttribute('stroke', 'rgba(255,255,255,0.06)');
-      line.setAttribute('stroke-width', '1');
-    }
-  });
-}
-
-function updateFused(data) {
-  const conf = data.confidence || 0;
-  const pct = Math.round(conf * 100);
-  confBar.style.width = `${pct}%`;
-  confLabel.textContent = `${pct}%`;
-  fusedSource.textContent = data.source || 'none';
-
-  // Color tier
-  confBar.className = 'conf-bar-fill ' + (conf >= 0.67 ? 'high' : conf >= 0.33 ? 'mid' : 'low');
-
-  // Alert state
-  const isAlert = data.motion && conf >= 0.33;
-  fusedCard.classList.toggle('alert', isAlert);
-
-  // Beep logic
-  if (isAlert && !lastMotionState) {
-    if (conf >= 1.0) tripleBeep();
-    else if (conf >= 0.67) beep(440, 100);
-    else beep(330, 80);
+  // Router badge (laptop only)
+  if(key==='laptop'&&n.router){
+    routerBadge.textContent=n.router;routerBadge.title=n.router;
   }
-  lastMotionState = isAlert;
-
-  // Floor badge
-  floorBadge.textContent = `1ST FLOOR MESH: ${data.floor1_active || 0}/3 ACTIVE`;
 }
 
-function addLogEntry(data) {
-  if (!data.motion) return;
-  const now = new Date();
-  const ts = now.toTimeString().slice(0, 8);
-  const conf = (data.confidence || 0).toFixed(2);
-  const src = data.source || 'unknown';
-
-  const entry = { ts, src, conf, floor: 1 };
-  events.push(entry);
-
-  const div = document.createElement('div');
-  div.className = 'log-entry';
-  div.innerHTML = `[${ts}] <span class="tag-motion">MOTION</span>  src:${src}  <span class="conf">conf:${conf}</span>  floor:1`;
-  logList.insertBefore(div, logList.firstChild);
-
-  // Trim log
-  while (logList.children.length > 100) logList.removeChild(logList.lastChild);
+function updateConfidence(data){
+  const conf=data.confidence||0;
+  const pct=Math.round(conf*100);
+  confFill.style.width=`${pct}%`;
+  confPct.textContent=`${pct}%`;
+  confSource.textContent=data.source||'none';
+  confFill.className='conf-fill '+(conf>0.65?'red':conf>0.25?'amber':'green');
+  cooldownNote.classList.toggle('visible',!!data.cooldown);
 }
 
-function updateChart() {
-  chart.data.datasets[0].data = history.extender.slice(-MAX_HISTORY);
-  chart.data.datasets[1].data = history.laptop.slice(-MAX_HISTORY);
-  chart.data.datasets[2].data = history.phone.slice(-MAX_HISTORY);
-  const maxLen = Math.max(history.extender.length, history.laptop.length, history.phone.length, MAX_HISTORY);
-  chart.data.labels = Array(Math.min(maxLen, MAX_HISTORY)).fill('');
+function updateChart(){
+  chart.data.labels=timeLabels.slice(-MAX_H);
+  chart.data.datasets[0].data=history.laptop.slice(-MAX_H);
+  chart.data.datasets[1].data=history.phone.slice(-MAX_H);
+  chart.data.datasets[2].data=history.extender.slice(-MAX_H);
   chart.update('none');
+}
+
+function addHistoryEntry(data){
+  if(!data.motion)return;
+  const ts=new Date(data.timestamp*1000).toTimeString().slice(0,8);
+  const conf=(data.confidence||0);
+  const entry={ts,state:data.state,conf,source:data.source||'',nodes:data.nodes};
+  events.unshift(entry);
+  if(events.length>50)events.pop();
+  renderLogEntry(entry,true);
+}
+
+function renderLogEntry(e,prepend){
+  const div=document.createElement('div');div.className='log-entry';
+  const stColor=SCOL[e.state]||'#888';
+  const confW=Math.round(e.conf*100);
+  const confColor=e.conf>0.65?'#E53E3E':e.conf>0.25?'#E8912A':'#38A169';
+  let zText='';
+  if(e.nodes){KEYS.forEach(k=>{
+    if(e.nodes[k])zText+=`${k[0].toUpperCase()}:${(e.nodes[k].zscore||0).toFixed(1)} `;
+  });}
+  div.innerHTML=`<span class="log-ts">${e.ts}</span>`+
+    `<span class="log-state-badge" style="background:${stColor}22;color:${stColor}">${e.state}</span>`+
+    `<span class="log-conf-bar"><span class="log-conf-fill" style="width:${confW}%;background:${confColor}"></span></span>`+
+    `<span class="log-src">${e.source}</span>`+
+    `<span class="log-zscores">${zText.trim()}</span>`;
+  if(prepend)logList.insertBefore(div,logList.firstChild);
+  else logList.appendChild(div);
 }
 
 // ═══════════════════════════════════════════════════════
 // LOG CONTROLS
 // ═══════════════════════════════════════════════════════
-clearLogBtn.addEventListener('click', () => {
-  logList.innerHTML = '';
-  events = [];
+$('clearHist').addEventListener('click',()=>{
+  logList.innerHTML='';events=[];
+  if(!simMode)fetch('/clear_history',{method:'POST'}).catch(()=>{});
+});
+$('exportCsv').addEventListener('click',()=>{
+  let csv='Timestamp,State,Confidence,Source\n';
+  events.forEach(e=>csv+=`${e.ts},${e.state},${e.conf.toFixed(2)},${e.source}\n`);
+  const blob=new Blob([csv],{type:'text/csv'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=`wifi_events_${Date.now()}.csv`;a.click();URL.revokeObjectURL(a.href);
 });
 
-exportCsvBtn.addEventListener('click', () => {
-  let csv = 'Timestamp,Source,Confidence,Floor\n';
-  events.forEach(e => csv += `${e.ts},${e.src},${e.conf},${e.floor}\n`);
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `wifi_events_${Date.now()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-});
+// ═══════════════════════════════════════════════════════
+// LOAD HISTORY ON BOOT
+// ═══════════════════════════════════════════════════════
+async function loadHistory(){
+  try{
+    const r=await fetch('/history');
+    const d=await r.json();
+    (d.events||[]).forEach(e=>{
+      const ts=new Date(e.timestamp*1000).toTimeString().slice(0,8);
+      const entry={ts,state:e.state,conf:e.confidence,source:e.source,nodes:e.nodes};
+      events.push(entry);
+      renderLogEntry(entry,false);
+    });
+  }catch(e){}
+}
+loadHistory();
 
 // ═══════════════════════════════════════════════════════
 // SIMULATION ENGINE
 // ═══════════════════════════════════════════════════════
-function simZscore(val, win) {
-  if (win.length < 5) return 0;
-  const m = win.reduce((a, b) => a + b, 0) / win.length;
-  const v = win.reduce((a, b) => a + (b - m) ** 2, 0) / win.length;
-  const s = Math.sqrt(v) || 0.001;
-  return (val - m) / s;
+function simZscore(v,w){
+  if(w.length<5)return 0;
+  const m=w.reduce((a,b)=>a+b,0)/w.length;
+  const s=Math.sqrt(w.reduce((a,b)=>a+(b-m)**2,0)/w.length)||0.001;
+  return(v-m)/s;
+}
+function simEmaSmooth(k,raw){
+  if(simEma[k]===null)simEma[k]=raw;
+  const s=0.3*raw+0.7*simEma[k];simEma[k]=s;return s;
 }
 
-function runSimTick() {
+function runSimTick(){
   simTick++;
-  const thr = parseFloat(thrSlider.value);
+  const thr=parseFloat(thrSlider.value);
+  if(!simBursting&&simTick%15===0){simBursting=true;simBurstStart=simTick}
+  if(simBursting&&simTick-simBurstStart>=6)simBursting=false;
 
-  // Burst logic: every 12s, burst for 5s
-  if (!simBursting && simTick % 12 === 0) {
-    simBursting = true;
-    simBurstStart = simTick;
-  }
-  if (simBursting && simTick - simBurstStart >= 5) {
-    simBursting = false;
-  }
+  const bases={extender:71,laptop:78,phone:65};
+  const spreads={extender:6,laptop:4,phone:5};
+  const drop=simBursting?(14+Math.random()*6):0;
 
-  const bases = { extender: 71, laptop: 78, phone: 65 };
-  const spreads = { extender: 5, laptop: 4, phone: 6 };
-  const drop = simBursting ? (12 + Math.random() * 6) : 0;
+  const nodes={};let motionNodes=[],conf=0;
+  let allCalibrated=true;
 
-  const nodes = {};
-  let activeCount = 3;
-  const motionNodes = [];
+  KEYS.forEach(k=>{
+    const raw=Math.round(Math.max(0,Math.min(100,
+      bases[k]+(Math.random()-0.5)*spreads[k]*2-drop)));
+    const smoothed=simEmaSmooth(k,raw);
 
-  NODE_KEYS.forEach(k => {
-    const base = bases[k] + (Math.random() - 0.5) * spreads[k] * 2;
-    const signal = Math.round(Math.max(0, Math.min(100, base - drop)));
+    // Calibration phase
+    if(simCalCount[k]<20){
+      simCalCount[k]++;
+      simCalBuf[k].push(smoothed);
+      nodes[k]={signal:raw,smoothed:Math.round(smoothed*100)/100,zscore:0,
+        motion:false,calibrated:false,online:true,last_seen:Date.now()/1000,
+        _warmup_count:simCalCount[k]};
+      allCalibrated=false;
+      return;
+    }
+    // Set baseline once
+    if(!simBaseline[k].set){
+      const buf=simCalBuf[k];
+      simBaseline[k].m=buf.reduce((a,b)=>a+b,0)/buf.length;
+      const v=buf.reduce((a,b)=>a+(b-simBaseline[k].m)**2,0)/buf.length;
+      simBaseline[k].s=Math.sqrt(v)||1;
+      simBaseline[k].set=true;
+    }
 
-    simWindows[k].push(signal);
-    if (simWindows[k].length > 20) simWindows[k].shift();
+    simWin[k].push(smoothed);
+    if(simWin[k].length>20)simWin[k].shift();
+    const z=simZscore(smoothed,simWin[k]);
 
-    const z = simZscore(signal, simWindows[k]);
-    let motion = false;
-    if (simWindows[k].length >= 5 && Math.abs(z) > thr) {
+    let motion=false;
+    if(simWin[k].length>=5&&Math.abs(z)>thr){
       simConsec[k]++;
-      if (simConsec[k] >= 2) { motion = true; simConsec[k] = 0; }
-    } else {
-      simConsec[k] = 0;
-    }
+      if(simConsec[k]>=2){motion=true;simConsec[k]=0}
+    }else simConsec[k]=0;
 
-    if (motion) motionNodes.push(k);
+    if(motion){motionNodes.push(k);conf+=NWEIGHTS[k]}
 
-    nodes[k] = {
-      signal, zscore: Math.round(z * 1000) / 1000,
-      motion, timestamp: Date.now() / 1000, last_seen: Date.now() / 1000
-    };
+    nodes[k]={signal:raw,smoothed:Math.round(smoothed*100)/100,
+      zscore:Math.round(z*1000)/1000,motion,calibrated:true,
+      online:true,last_seen:Date.now()/1000,_warmup_count:20};
   });
 
-  const conf = motionNodes.length / 3;
-  const fusedData = {
-    motion: conf >= 1 / 3,
-    confidence: Math.round(conf * 100) / 100,
-    source: motionNodes.length ? motionNodes.join('+') : 'none',
-    floor1_active: activeCount,
-    timestamp: Date.now() / 1000,
-    nodes
-  };
+  conf=Math.round(Math.min(conf,1)*100)/100;
+  let state;
+  if(!allCalibrated)state='CALIBRATING';
+  else if(conf===0)state='IDLE';
+  else if(conf<=0.25)state='ACTIVITY';
+  else if(conf<=0.65)state='MOTION';
+  else state='CONFIRMED';
 
-  processData(fusedData);
+  processData({state,motion:conf>0,confidence:conf,
+    source:motionNodes.length?motionNodes.join('+'):'none',
+    active_nodes:3,cooldown:false,timestamp:Date.now()/1000,nodes});
 }
 
 // ═══════════════════════════════════════════════════════
-// UNIFIED DATA PROCESSOR
+// UNIFIED PROCESSOR
 // ═══════════════════════════════════════════════════════
-function processData(data) {
-  const nodes = data.nodes || {};
+function processData(data){
+  const nodes=data.nodes||{};
+  updateState(data.state,data.cooldown);
+  updateCalBar(nodes);
+  updateConfidence(data);
 
-  NODE_KEYS.forEach(k => {
-    if (nodes[k]) {
-      updateNodeCard(k, nodes[k]);
-      history[k].push(nodes[k].signal || 0);
-      if (history[k].length > MAX_HISTORY) history[k].shift();
+  const now=new Date();
+  const ts=now.toTimeString().slice(0,5);
+  timeLabels.push(ts);
+  if(timeLabels.length>MAX_H)timeLabels.shift();
+
+  KEYS.forEach(k=>{
+    if(nodes[k]){
+      updateNodeCard(k,nodes[k]);
+      history[k].push(nodes[k].smoothed||nodes[k].signal||0);
+      if(history[k].length>MAX_H)history[k].shift();
     }
   });
 
-  updateFloorMap(nodes);
-  updateFused(data);
-  addLogEntry(data);
   updateChart();
+  addHistoryEntry(data);
 }
 
 // ═══════════════════════════════════════════════════════
-// POLLING LOOP
+// POLLING
 // ═══════════════════════════════════════════════════════
-async function poll() {
-  if (simMode) {
-    runSimTick();
-    failStrikes = 0;
-    offlineBanner.classList.remove('visible');
-    return;
-  }
-
-  try {
-    const resp = await fetch('/fused');
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
+async function poll(){
+  if(simMode){runSimTick();failStrikes=0;offlineBanner.classList.remove('visible');return}
+  try{
+    const r=await fetch('/fused');
+    if(!r.ok)throw new Error(`HTTP ${r.status}`);
+    const data=await r.json();
+    // Inject warmup count estimates for cal bar
+    KEYS.forEach(k=>{
+      if(data.nodes&&data.nodes[k]){
+        const n=data.nodes[k];
+        if(!n.calibrated)n._warmup_count=Math.min(20,
+          Math.round((Date.now()/1000-(n.timestamp||Date.now()/1000-1))));
+        else n._warmup_count=20;
+      }
+    });
     processData(data);
-    failStrikes = 0;
-    offlineBanner.classList.remove('visible');
-  } catch (e) {
+    failStrikes=0;offlineBanner.classList.remove('visible');
+  }catch(e){
     failStrikes++;
-    if (failStrikes >= 3) {
-      offlineBanner.classList.add('visible');
-    }
+    if(failStrikes>=3)offlineBanner.classList.add('visible');
   }
 }
 
-setInterval(poll, 1000);
-
-// Initial poll
+setInterval(poll,1000);
 poll();
 </script>
 </body>
