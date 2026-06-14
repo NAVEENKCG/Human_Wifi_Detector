@@ -610,13 +610,12 @@ const mainChart=new Chart(mCtx,{
 
 const sparks={};
 KEYS.forEach(k=>{
-  sparks[k]=new Chart($(f`spark-${k}`).getContext('2d'),{
+  sparks[k]=new Chart($(`spark-${k}`).getContext('2d'),{
     type:'line',
     data:{labels:Array(20).fill(''),datasets:[{borderColor:COLS[k],borderWidth:1.5,pointRadius:0,tension:0.2,data:Array(20).fill(null)}]},
     options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false}}}
   });
 });
-function f(s){return s[0].replace(/\[|\]/g,'');} // hack for template lit
 
 // ── UPDATE LOGIC ──
 let lastStateStr='';
