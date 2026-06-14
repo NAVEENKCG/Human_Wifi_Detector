@@ -3,266 +3,170 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RuView Style WiFi Sensing Dashboard</title>
+<title>WiFi Sensing Radar POV</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
   --bg:#050A18;
   --surface:#0D1526;
-  --elevated:#152035;
   --text:#FAFAF8;
   --muted:#8b9bb4;
-  --dim:#4a5b7d;
   --border:rgba(255,255,255,0.08);
   --glass:rgba(255,255,255,0.03);
-  --glass-hover:rgba(255,255,255,0.07);
-  --glass-border:rgba(255,255,255,0.12);
-  --font:'JetBrains Mono',monospace;
   --idle:#38A169;
   --watching:#D97706;
   --activity:#E8912A;
   --motion:#E53E3E;
-  --confirmed:#ff2020;
   --laptop:#378ADD;
   --phone:#BA7517;
   --extender:#1D9E75;
+  --font:'JetBrains Mono',monospace;
 }
 html{font-size:14px}
-body{background:var(--bg);color:var(--text);font-family:var(--font);
-  min-height:100vh;overflow:hidden;line-height:1.5;display:flex;}
+body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:100vh;display:flex;overflow:hidden;}
 
-/* ── Layout ── */
-#scene-col{width:60%;height:100vh;position:relative;}
-#panel-col{width:40%;height:100vh;overflow-y:auto;padding:24px;
-  display:flex;flex-direction:column;gap:16px;background:rgba(13,21,38,0.6);
-  border-left:1px solid var(--border); padding-bottom: 80px; backdrop-filter:blur(10px);} 
+/* ── LAYOUT ── */
+#radar-col{flex:1; position:relative; background:radial-gradient(circle at center, #0B132B 0%, #050A18 100%);}
+#panel-col{width:420px; height:100vh; background:rgba(13,21,38,0.8); border-left:1px solid var(--border); padding:20px; display:flex; flex-direction:column; gap:16px; overflow-y:auto;}
 
-@media(max-width:768px){
-  body{flex-direction:column;overflow-y:auto;}
-  #scene-col{width:100%;height:50vh;}
-  #panel-col{width:100%;height:auto;overflow:visible;padding-bottom:100px;}
+@media(max-width:800px){
+  body{flex-direction:column; overflow-y:auto;}
+  #radar-col{width:100%; height:50vh;}
+  #panel-col{width:100%; height:auto; padding-bottom:80px;}
 }
 
-/* ── 3D Scene HUD ── */
-#threeCanvas{width:100%;height:100%;display:block;}
-#hudOverlay{position:absolute;top:24px;left:24px;pointer-events:none;z-index:10;}
-.logo-title{font-size:1.4rem;font-weight:800;letter-spacing:0.02em;margin-bottom:4px; display:flex; align-items:center; gap:8px;}
-.logo-icon{color:var(--idle); font-size:1.6rem;}
-.subtitle{font-size:0.6rem;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;}
+/* ── RADAR CANVAS ── */
+#radarCanvas{width:100%; height:100%; display:block;}
+.radar-overlay{position:absolute; top:24px; left:24px; right:24px; display:flex; justify-content:space-between; pointer-events:none;}
+.hud-title{font-size:1.2rem; font-weight:800; letter-spacing:0.05em; display:flex; align-items:center; gap:8px;}
+.hud-sub{font-size:0.7rem; color:var(--muted); letter-spacing:0.15em; margin-top:4px;}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--laptop); box-shadow:0 0 10px var(--laptop);}
 
-.hud-state-pill{display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; letter-spacing:0.08em; margin-top:24px; background:rgba(0,0,0,0.6); border:1px solid var(--border); transition:0.3s; text-transform:uppercase;}
-.blink-dot{width:8px;height:8px;border-radius:50%; animation:blink 1s infinite;}
+.state-pill{padding:8px 16px; border-radius:24px; font-weight:800; font-size:0.85rem; letter-spacing:0.1em; border:1px solid var(--border); background:rgba(0,0,0,0.5); display:flex; align-items:center; gap:8px;}
+.blink-dot{width:8px; height:8px; border-radius:50%; animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
 
-/* ── View Controls ── */
-.view-controls{position:absolute; top:24px; right:24px; display:flex; gap:8px; z-index:10;}
-.btn-view{background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); padding:6px 12px; border-radius:6px; font-family:var(--font); font-size:0.65rem; cursor:pointer; transition:0.2s; backdrop-filter:blur(4px); letter-spacing:0.05em;}
-.btn-view:hover{background:rgba(255,255,255,0.1);}
-.btn-view.active{background:rgba(255,255,255,0.15); color:var(--text); border-color:var(--dim);}
+.radar-legend{position:absolute; bottom:24px; left:24px; display:flex; gap:16px; font-size:0.65rem; color:var(--muted); pointer-events:none; background:rgba(0,0,0,0.5); padding:10px 16px; border-radius:12px; border:1px solid var(--border);}
+.leg-item{display:flex; align-items:center; gap:6px;}
+.leg-color{width:10px; height:10px; border-radius:50%;}
 
-/* ── Coordinates HUD ── */
-.coords-hud{position:absolute; bottom:24px; left:24px; z-index:10; font-size:0.65rem; color:var(--text); background:rgba(10,13,26,0.8); padding:16px; border-radius:12px; border:1px solid var(--glass-border); backdrop-filter:blur(8px); pointer-events:none; min-width:200px; box-shadow:0 8px 32px rgba(0,0,0,0.4);}
-.coords-hud .tt-title{color:var(--muted); margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; font-weight:800; letter-spacing:0.1em;}
-.coord-row{display:flex; justify-content:space-between; margin-bottom:6px;}
-.coord-lbl{font-weight:700;}
+/* ── PANELS ── */
+.panel{background:var(--glass); border:1px solid rgba(255,255,255,0.08); border-radius:16px; padding:20px;}
+.panel-title{font-size:0.65rem; font-weight:700; color:var(--muted); letter-spacing:0.1em; margin-bottom:16px;}
 
-/* ── Tooltip ── */
-#nodeTooltip{
-  position:absolute; display:none; background:rgba(15,20,36,0.95);
-  border:1px solid var(--glass-border); padding:12px; border-radius:8px;
-  color:#fff; font-size:0.65rem; pointer-events:none; z-index:100;
-  transform:translate(-50%,-100%); margin-top:-15px; box-shadow:0 8px 24px rgba(0,0,0,0.6);
-  backdrop-filter:blur(8px); white-space:nowrap;
-}
-.tt-title{font-weight:800;font-size:0.8rem; letter-spacing:0.05em;}
-
-/* ── Panels ── */
-.panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.2);}
-  
-/* ── Vital Signs / Status ── */
 .status-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
-.metric-box{display:flex; flex-direction:column; gap:4px; padding-bottom:12px; border-bottom:1px solid var(--border);}
-.metric-lbl{font-size:0.6rem; color:var(--muted); letter-spacing:0.1em; display:flex; align-items:center; gap:6px;}
-.metric-val{font-size:1.8rem; font-weight:800; line-height:1;}
+.metric-box{border-bottom:1px solid var(--border); padding-bottom:12px;}
+.metric-lbl{font-size:0.6rem; color:var(--muted); letter-spacing:0.1em; margin-bottom:4px;}
+.metric-val{font-size:2rem; font-weight:800; line-height:1;}
 .metric-val span{font-size:0.8rem; color:var(--muted); font-weight:500; margin-left:4px;}
-.conf-bar-wrap{height:4px; background:rgba(255,255,255,0.05); border-radius:2px; margin-top:8px; overflow:hidden;}
-.conf-bar{height:100%; background:var(--idle); transition:0.3s; width:0%;}
 
-/* ── Node Cards ── */
-.node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.node-card{background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);border-radius:12px;
-  padding:14px;position:relative;display:flex;flex-direction:column;gap:8px; transition:0.3s;}
-.nc-header{display:flex;justify-content:space-between;align-items:center;}
-.nc-name{font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;}
-.nc-metrics{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;}
-.nc-sig{font-size:1.6rem;font-weight:800;line-height:1;}
-.nc-sig small{font-size:0.7rem;color:var(--muted);font-weight:500;}
-.nc-z{font-size:0.65rem;font-weight:700;}
-.nc-dist{font-size:0.6rem;color:var(--muted);margin-top:2px;display:flex;justify-content:space-between;}
-.nc-dist span{color:var(--text);font-weight:600;}
-.nc-spark-wrap{height:24px; position:relative; margin-top:8px; overflow:hidden;}
-.sparkline{position:absolute; inset:0; width:100%; height:100%;}
+.node-list{display:flex; flex-direction:column; gap:12px;}
+.node-card{background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.08); border-radius:12px; padding:12px; display:flex; justify-content:space-between; align-items:center; transition:0.3s;}
+.nc-left{display:flex; flex-direction:column; gap:4px;}
+.nc-name{font-size:0.7rem; font-weight:800; text-transform:uppercase; letter-spacing:0.05em;}
+.nc-z{font-size:0.6rem; color:var(--muted);}
+.nc-right{text-align:right;}
+.nc-sig{font-size:1.4rem; font-weight:800; line-height:1;}
+.nc-sig small{font-size:0.6rem; color:var(--muted); font-weight:500;}
 
-/* ── Chart ── */
-.chart-panel{flex:1;min-height:180px;display:flex;flex-direction:column;}
-.chart-header{display:flex;justify-content:space-between;margin-bottom:12px;}
-.chart-title{font-size:0.65rem; font-weight:700; color:var(--muted); letter-spacing:0.1em;}
-.chart-wrap{flex:1;position:relative;}
+.chart-wrap{height:160px; position:relative; width:100%;}
+.controls{display:flex; justify-content:space-between; align-items:center; margin-top:auto;}
+.btn{background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text); padding:8px 16px; border-radius:8px; font-family:var(--font); font-size:0.65rem; font-weight:700; cursor:pointer; transition:0.2s;}
+.btn:hover{background:rgba(255,255,255,0.1);}
+.btn.active{background:var(--idle); color:#000; border-color:var(--idle);}
 
-/* ── Event Log ── */
-.log-panel{height:160px;display:flex;flex-direction:column;}
-.btn-small{background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);
-  font-family:var(--font);font-size:0.6rem;padding:4px 10px;border-radius:6px;cursor:pointer;transition:0.2s;}
-.btn-small:hover{background:rgba(255,255,255,0.1);}
-.log-list{flex:1;overflow-y:auto;font-size:0.65rem;margin-top:8px;}
-.log-list::-webkit-scrollbar{width:4px;}
-.log-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-.log-entry{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);
-  color:var(--dim);font-family:var(--font);}
-.log-entry.motion{color:var(--text);}
-.le-time{color:var(--muted);}
-.le-state{font-weight:800;width:50px;}
-
-/* ── Controls ── */
-.controls-bar{display:flex;align-items:center;justify-content:space-between;
-  background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
-  padding:12px 20px;margin-top:auto;}
-.ctrl-group{display:flex;align-items:center;gap:16px;}
-.ctrl-lbl{font-size:0.65rem;color:var(--text);display:flex;align-items:center;gap:8px;cursor:pointer; font-weight:600;}
-.ctrl-lbl input[type=range]{width:80px;accent-color:var(--idle);}
-.btn-toggle{background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--muted);
-  padding:6px 12px;border-radius:8px;font-family:var(--font);font-size:0.65rem;cursor:pointer; transition:0.2s; font-weight:700;}
-.btn-toggle.active{background:var(--idle);color:#000; border-color:var(--idle);}
-
-.offline-banner{position:fixed;top:16px;left:50%;transform:translateX(-50%);
-  background:rgba(229,62,62,0.2);border:1px solid rgba(229,62,62,0.4);
-  color:#ff8888;padding:8px 24px;border-radius:12px;font-size:0.75rem;
-  font-weight:700;z-index:50;display:none;backdrop-filter:blur(12px); box-shadow:0 8px 32px rgba(229,62,62,0.3);}
-.offline-banner.visible{display:flex; align-items:center; gap:8px;}
+#offlineBanner{position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(229,62,62,0.2); border:1px solid rgba(229,62,62,0.4); color:#ff8888; padding:8px 24px; border-radius:12px; font-size:0.75rem; font-weight:700; z-index:50; display:none; backdrop-filter:blur(8px);}
+#offlineBanner.visible{display:block;}
 </style>
 </head>
 <body>
 
-<div class="offline-banner" id="offlineBanner">⚠ SERVER UNREACHABLE</div>
-<div id="nodeTooltip"></div>
+<div id="offlineBanner">⚠ SERVER UNREACHABLE</div>
 
-<!-- LEFT COLUMN: 3D SCENE -->
-<div id="scene-col">
-  <div class="view-controls">
-    <button class="btn-view active" id="btn3D">3D ORBIT</button>
-    <button class="btn-view" id="btnTop">TOP PLAN</button>
-    <button class="btn-view" id="btnSimOff" style="color:var(--watching);border-color:rgba(217,119,6,0.3);">SIM OFF</button>
-  </div>
-
-  <div class="coords-hud">
-    <div class="tt-title">NODE LOCATIONS (m)</div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--extender)">EXTENDER</span> <span id="c-extender">0.00, 0.00, 0.00</span></div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--laptop)">LAPTOP</span> <span id="c-laptop">--, --, --</span></div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--phone)">PHONE</span> <span id="c-phone">--, --, --</span></div>
-  </div>
-
-  <canvas id="threeCanvas"></canvas>
+<!-- RADAR COLUMN -->
+<div id="radar-col">
+  <canvas id="radarCanvas"></canvas>
   
-  <div id="hudOverlay">
-    <div class="logo-title"><span class="logo-icon">π</span> RuView</div>
-    <div class="subtitle">WIFI DENSEPOSE SENSING OBSERVATORY</div>
-    
-    <div class="hud-state-pill" id="hudStatePill" style="color:var(--idle); border-color:var(--idle);">
-      <div class="blink-dot" id="hudDot" style="background:var(--idle)"></div>
-      <span id="hudStateTxt">IDLE</span>
+  <div class="radar-overlay">
+    <div>
+      <div class="hud-title"><div class="dot"></div> <span style="color:var(--laptop)">LAPTOP</span> POV SENSOR</div>
+      <div class="hud-sub">SWEEP RADIUS: 5.0 METERS</div>
     </div>
+    <div>
+      <div class="state-pill" id="hudState">
+        <div class="blink-dot" id="hudDot" style="background:var(--idle)"></div>
+        <span id="hudTxt" style="color:var(--idle)">IDLE</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="radar-legend">
+    <div class="leg-item"><div class="leg-color" style="background:var(--laptop)"></div> LAPTOP (ORIGIN)</div>
+    <div class="leg-item"><div class="leg-color" style="background:var(--phone)"></div> PHONE NODE</div>
+    <div class="leg-item"><div class="leg-color" style="background:var(--motion); box-shadow:0 0 8px var(--motion)"></div> PERSON (MOTION)</div>
   </div>
 </div>
 
-<!-- RIGHT COLUMN: PANELS -->
+<!-- PANELS COLUMN -->
 <div id="panel-col">
   
-  <!-- VITAL SIGNS -->
   <div class="panel">
-    <div class="chart-title" style="margin-bottom:16px;">PRESENCE METRICS</div>
+    <div class="panel-title">SENSING METRICS</div>
     <div class="status-grid">
       <div class="metric-box">
-        <div class="metric-lbl">♥ RESPIRATION / MOTION</div>
-        <div class="metric-val" id="metric-mot">0.00<span>VAR</span></div>
+        <div class="metric-lbl">CONFIDENCE</div>
+        <div class="metric-val" id="val-conf">0<span>%</span></div>
       </div>
       <div class="metric-box">
-        <div class="metric-lbl">⚖ CONFIDENCE</div>
-        <div class="metric-val" id="metric-conf">0<span>%</span></div>
-        <div class="conf-bar-wrap"><div class="conf-bar" id="confBar"></div></div>
+        <div class="metric-lbl">MAX VARIANCE</div>
+        <div class="metric-val" id="val-var">0.00<span>v</span></div>
       </div>
     </div>
   </div>
 
-  <!-- NODE CARDS -->
-  <div class="node-grid">
-    <div class="node-card" id="card-laptop" style="border-top:2px solid var(--laptop)">
-      <div class="nc-header">
-        <span class="nc-name" style="color:var(--laptop)">Laptop</span>
+  <div class="panel" style="padding:16px;">
+    <div class="panel-title" style="margin-bottom:12px;">ACTIVE NODES</div>
+    <div class="node-list">
+      <div class="node-card" id="card-laptop" style="border-left:3px solid var(--laptop)">
+        <div class="nc-left">
+          <div class="nc-name" style="color:var(--laptop)">LAPTOP</div>
+          <div class="nc-z" id="z-laptop">Var: 0.00</div>
+        </div>
+        <div class="nc-right">
+          <div class="nc-sig" id="sig-laptop">--<small>dBm</small></div>
+        </div>
       </div>
-      <div class="nc-metrics">
-        <span class="nc-sig" id="sig-laptop">--<small>dBm</small></span>
-        <span class="nc-z" id="z-laptop">v: --</span>
+      <div class="node-card" id="card-phone" style="border-left:3px solid var(--phone)">
+        <div class="nc-left">
+          <div class="nc-name" style="color:var(--phone)">PHONE</div>
+          <div class="nc-z" id="z-phone">Var: 0.00</div>
+        </div>
+        <div class="nc-right">
+          <div class="nc-sig" id="sig-phone">--<small>dBm</small></div>
+        </div>
       </div>
-      <div class="nc-dist">Dist: <span id="dist-laptop">-- m</span></div>
-      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-laptop"></canvas></div>
-    </div>
-    <div class="node-card" id="card-phone" style="border-top:2px solid var(--phone)">
-      <div class="nc-header">
-        <span class="nc-name" style="color:var(--phone)">Phone</span>
+      <div class="node-card" id="card-extender" style="border-left:3px solid var(--extender)">
+        <div class="nc-left">
+          <div class="nc-name" style="color:var(--extender)">EXTENDER</div>
+          <div class="nc-z" id="z-extender">Var: 0.00</div>
+        </div>
+        <div class="nc-right">
+          <div class="nc-sig" id="sig-extender">--<small>dBm</small></div>
+        </div>
       </div>
-      <div class="nc-metrics">
-        <span class="nc-sig" id="sig-phone">--<small>dBm</small></span>
-        <span class="nc-z" id="z-phone">v: --</span>
-      </div>
-      <div class="nc-dist">Dist: <span id="dist-phone">-- m</span></div>
-      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-phone"></canvas></div>
-    </div>
-    <div class="node-card" id="card-extender" style="border-top:2px solid var(--extender)">
-      <div class="nc-header">
-        <span class="nc-name" style="color:var(--extender)">Extender</span>
-      </div>
-      <div class="nc-metrics">
-        <span class="nc-sig" id="sig-extender">--<small>dBm</small></span>
-        <span class="nc-z" id="z-extender">v: --</span>
-      </div>
-      <div class="nc-dist">Origin <span id="dist-extender">0.0 m</span></div>
-      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-extender"></canvas></div>
     </div>
   </div>
 
-  <!-- CHART -->
-  <div class="panel chart-panel">
-    <div class="chart-header">
-      <div class="chart-title">WIFI SIGNAL TRACE</div>
-    </div>
-    <div class="chart-wrap">
-      <canvas id="mainChart"></canvas>
-    </div>
+  <div class="panel">
+    <div class="panel-title">SIGNAL TRACE</div>
+    <div class="chart-wrap"><canvas id="mainChart"></canvas></div>
   </div>
 
-  <!-- LOG -->
-  <div class="panel log-panel">
-    <div class="chart-header">
-      <div class="chart-title">EVENT LOG</div>
-      <button class="btn-small" id="btnExport">EXPORT CSV</button>
-    </div>
-    <div class="log-list" id="logList"></div>
-  </div>
-
-  <!-- CONTROLS -->
-  <div class="controls-bar">
-    <div class="ctrl-group">
-      <label class="ctrl-lbl">THRESHOLD <span id="thrVal" style="color:var(--idle)">2.0</span>
-        <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
-      </label>
-    </div>
-    <div class="ctrl-group">
-      <button class="btn-toggle" id="btnMute">SOUND ON</button>
-    </div>
+  <div class="controls">
+    <button class="btn" id="btnSim">SIMULATOR: OFF</button>
+    <button class="btn" id="btnMute">SOUND ON</button>
   </div>
 
 </div>
@@ -275,10 +179,7 @@ const SCOLS = {CALIBRATING:'#888',IDLE:'#38A169',WATCHING:'#D97706',ACTIVITY:'#E
 
 let sysState={state:'CALIBRATING',conf:0,nodes:{},pos:{}};
 let history={laptop:[],phone:[],extender:[]};
-let sparkH={laptop:[],phone:[],extender:[]};
-let logEvents=[];
-let muted=false, simMode=false, autoRotate=true, currentView='3D';
-let failStrikes=0;
+let muted=false, simMode=false;
 
 // Audio
 let actx=null;
@@ -292,259 +193,123 @@ function beep(f,d=80){
     o.stop(actx.currentTime+d/1000+0.05)}catch(e){}
 }
 
-// ── 3D SCENE (RUVIEW AESTHETIC) ──
-let scene,camera,renderer,clock;
-let spheres={}, ringsPool=[], humanGroup;
-let isDragging=false, dragTimer=0;
-const raycaster = new THREE.Raycaster();
-const mouse = new THREE.Vector2();
+// ── RADAR LOGIC ──
+const canvas = $('radarCanvas');
+const ctx = canvas.getContext('2d');
+let w, h, cx, cy, radius, scale;
+let sweepAng = 0;
+let blips = []; 
 
-function createTextSprite(msg, color, size=24){
-  const canvas=document.createElement('canvas');
-  canvas.width=256;canvas.height=64;
-  const ctx=canvas.getContext('2d');
-  ctx.fillStyle=color;
-  ctx.font=`bold ${size}px "JetBrains Mono", monospace`;
-  ctx.textAlign='center';
-  ctx.fillText(msg,128,40);
-  const tex=new THREE.CanvasTexture(canvas);
-  const mat=new THREE.SpriteMaterial({map:tex,transparent:true});
-  const sprite=new THREE.Sprite(mat);
-  sprite.scale.set(4,1,1);
-  return sprite;
+function resize(){
+  const rect = canvas.parentElement.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+  w = canvas.width; h = canvas.height;
+  cx = w / 2; cy = h / 2;
+  radius = Math.min(cx, cy) * 0.8;
+  scale = radius / 5.0; 
+}
+window.addEventListener('resize', resize);
+resize();
+
+function checkSweep(oldAng, newAng, targetAng) {
+  if (oldAng <= targetAng && targetAng <= newAng) return true;
+  if (oldAng > newAng && (targetAng >= oldAng || targetAng <= newAng)) return true;
+  return false;
 }
 
-function init3D(){
-  const container=$('scene-col');
-  scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x050A18); // Dark space
-  
-  camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,0.1,100);
-  camera.position.set(0, 8, 14);
-  camera.lookAt(0,0,0);
+function renderRadar(){
+  requestAnimationFrame(renderRadar);
+  ctx.clearRect(0,0,w,h);
 
-  renderer=new THREE.WebGLRenderer({canvas:$('threeCanvas'),antialias:true});
-  renderer.setSize(container.clientWidth,container.clientHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
-
-  clock=new THREE.Clock();
-
-  // Floor Grid (Green matrix dots)
-  const count = 21;
-  const gap = 1.0;
-  const gridGeo = new THREE.PlaneGeometry(0.3, 0.3);
-  gridGeo.rotateX(-Math.PI / 2);
-  const gridMat = new THREE.MeshBasicMaterial({color: 0x1D9E75, transparent: true, opacity: 0.15});
-  const floorGrid = new THREE.InstancedMesh(gridGeo, gridMat, count * count);
-  const dummy = new THREE.Object3D();
-  let idx = 0;
-  for(let x = -10; x <= 10; x++) {
-    for(let z = -10; z <= 10; z++) {
-      dummy.position.set(x * gap, 0, z * gap);
-      dummy.updateMatrix();
-      floorGrid.setMatrixAt(idx++, dummy.matrix);
-    }
+  // Background Rings
+  ctx.strokeStyle = 'rgba(56, 161, 105, 0.2)';
+  ctx.lineWidth = 2 * window.devicePixelRatio;
+  for(let i=1; i<=4; i++){
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius * (i/4), 0, Math.PI*2);
+    ctx.stroke();
   }
-  scene.add(floorGrid);
-
-  // Nodes
-  spheres.extender = makeNode(0x1D9E75, 0.2, "EXT", 'extender');
-  spheres.laptop   = makeNode(0x378ADD, 0.2, "LAP", 'laptop');
-  spheres.phone    = makeNode(0xBA7517, 0.2, "PHN", 'phone');
-
-  // Human DensePose Silhouette
-  humanGroup = new THREE.Group();
   
-  // Body capsule
-  const bodyGeo = new THREE.CapsuleGeometry(0.35, 1.0, 4, 16);
-  const bodyMat = new THREE.MeshBasicMaterial({color: 0x38A169, transparent: true, opacity: 0});
-  const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
-  bodyMesh.position.y = 0.85; 
-  humanGroup.add(bodyMesh);
-  
-  // Joints
-  const jointGeo = new THREE.SphereGeometry(0.08, 8, 8);
-  const jointMat = new THREE.MeshBasicMaterial({color: 0xff4444, transparent:true, opacity:0});
-  const jointPositions = [
-    [0, 1.6, 0], // head
-    [-0.4, 1.2, 0], [0.4, 1.2, 0], // shoulders
-    [-0.45, 0.7, 0], [0.45, 0.7, 0], // elbows
-    [-0.2, 0.3, 0], [0.2, 0.3, 0]  // knees
-  ];
-  const joints = [];
-  jointPositions.forEach(p => {
-    const j = new THREE.Mesh(jointGeo, jointMat);
-    j.position.set(...p);
-    humanGroup.add(j);
-    joints.push(j);
-  });
-  
-  // Base highlight
-  const baseGeo = new THREE.PlaneGeometry(1.5, 1.5);
-  baseGeo.rotateX(-Math.PI/2);
-  const baseMat = new THREE.MeshBasicMaterial({color: 0x38A169, transparent:true, opacity:0, side:THREE.DoubleSide});
-  const baseMesh = new THREE.Mesh(baseGeo, baseMat);
-  baseMesh.position.y = 0.01;
-  humanGroup.add(baseMesh);
+  // Crosshairs
+  ctx.beginPath();
+  ctx.moveTo(cx, cy - radius - 20); ctx.lineTo(cx, cy + radius + 20);
+  ctx.moveTo(cx - radius - 20, cy); ctx.lineTo(cx + radius + 20, cy);
+  ctx.stroke();
 
-  humanGroup.userData = { bodyMat, jointMat, baseMat, joints };
-  scene.add(humanGroup);
-
-  // Wireframe Dome Rings (RuView style)
-  for(let i=0;i<15;i++){
-    const rg=new THREE.SphereGeometry(1, 16, 16);
-    const rm=new THREE.MeshBasicMaterial({color:0x378ADD, wireframe:true, transparent:true, opacity:0});
-    const r=new THREE.Mesh(rg,rm);
-    r.userData={active:false,t:0};
-    scene.add(r);
-    ringsPool.push(r);
+  // Draw Sweep Beam
+  let sweepSpeed = 0.035;
+  let oldAng = sweepAng;
+  sweepAng += sweepSpeed;
+  if(sweepAng > Math.PI*2) sweepAng -= Math.PI*2;
+  
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(sweepAng);
+  for(let a=0; a<40; a++){
+    ctx.beginPath();
+    ctx.moveTo(0,0);
+    ctx.arc(0,0, radius, -a*0.015, -(a+1)*0.015, true);
+    ctx.fillStyle = `rgba(56,161,105, ${0.4 - a/100})`;
+    ctx.fill();
   }
+  ctx.restore();
 
-  // Interaction
-  let isDown=false;
-  renderer.domElement.addEventListener('pointerdown',()=>{isDown=true;isDragging=true;});
-  renderer.domElement.addEventListener('pointerup',()=>{isDown=false;dragTimer=3.0;});
-  renderer.domElement.addEventListener('pointermove',(e)=>{
-    if(isDown && currentView==='3D'){
-      camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-e.movementX*0.01);
-      camera.lookAt(0,0,0);
-    }
-  });
-
-  window.addEventListener('resize',()=>{
-    camera.aspect=container.clientWidth/container.clientHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(container.clientWidth,container.clientHeight);
-  });
-
-  requestAnimationFrame(render3D);
-  setInterval(emitRings, 1500);
-}
-
-function makeNode(color, r, labelText, key){
-  const g=new THREE.Group();
-  g.userData.key = key;
-  
-  const geo=new THREE.BoxGeometry(r*2, r*0.5, r*2);
-  const mat=new THREE.MeshBasicMaterial({color:color});
-  const mesh=new THREE.Mesh(geo,mat);
-  mesh.position.y = r*0.25;
-  g.add(mesh);
-  
-  const lbl=createTextSprite(labelText, '#ffffff', 20);
-  lbl.position.y=r*1.5;
-  g.add(lbl);
-  g.userData.lbl = lbl;
-
-  g.userData={...g.userData, mesh,mat,color,targetPos:new THREE.Vector3()};
-  scene.add(g);
-  return g;
-}
-
-function emitRings(){
-  const n=sysState.nodes;
-  if(!n)return;
-  KEYS.forEach(k=>{
-    if(n[k]&&n[k].online){
-      spawnRing(k,n[k].motion);
-      if(n[k].motion) setTimeout(()=>spawnRing(k,true),750);
-    }
-  });
-}
-
-function spawnRing(key, isMotion){
-  const r=ringsPool.find(x=>!x.userData.active);
-  if(r){
-    r.userData.active=true;
-    r.userData.t=0;
-    r.userData.isMotion=isMotion;
-    r.position.copy(spheres[key].position);
-    r.material.color.setHex(isMotion?0xff4444:COLS[key]);
-  }
-}
-
-function render3D(){
-  requestAnimationFrame(render3D);
-  const dt=clock.getDelta();
-  const t=clock.getElapsedTime();
-
-  // Auto rotate
-  if(!isDragging && autoRotate && currentView==='3D'){
-    camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.002);
-    camera.lookAt(0,0,0);
-  }
-  if(dragTimer>0){dragTimer-=dt; if(dragTimer<=0)isDragging=false;}
-
-  const n=sysState.nodes||{};
-  const pos=sysState.pos||{};
-
-  // Update nodes
-  ['extender','laptop','phone'].forEach(k=>{
-    const s=spheres[k];
-    if(pos[k]){
-      s.userData.targetPos.set(pos[k].x, 0, pos[k].z); // Force y=0 on 1st floor
-      s.position.lerp(s.userData.targetPos, 0.05);
-      const cstr = `${pos[k].x.toFixed(2)}, 0.00, ${pos[k].z.toFixed(2)}`;
-      if($(`c-${k}`)) $(`c-${k}`).textContent = cstr;
-    }
+  // Detect and inject blips
+  const p = sysState.pos;
+  if (p && p.laptop && p.phone) {
+    let lx = p.laptop.x, lz = p.laptop.z;
     
-    if(s.userData.lbl){
-      s.userData.lbl.position.y = currentView==='TOP' ? 0.5 : 0.6;
+    // Phone Node
+    let px = p.phone.x, pz = p.phone.z;
+    let phdx = px - lx, phdz = pz - lz;
+    let phAng = Math.atan2(phdz, phdx);
+    if(phAng < 0) phAng += Math.PI*2;
+    if(checkSweep(oldAng, sweepAng, phAng)) {
+      blips.push({x: phdx, y: phdz, life: 1.0, type: 'phone'});
     }
-    
-    if(k==='laptop'||k==='phone'){
-      const nd=n[k]||{};
-      if(!nd.online){
-        s.userData.mat.color.setHex(0x555555);
-      }else if(!nd.calibrated){
-        s.userData.mat.wireframe=true;
-        s.userData.mat.color.setHex(COLS[k]);
-      }else{
-        s.userData.mat.wireframe=false;
-        s.userData.mat.color.setHex(nd.motion ? 0xff4444 : COLS[k]);
+
+    // Person
+    if (sysState.conf > 0.3) {
+      let mdx = (px - lx)/2 + (Math.random()-0.5)*0.5;
+      let mdz = (pz - lz)/2 + (Math.random()-0.5)*0.5;
+      let mAng = Math.atan2(mdz, mdx);
+      if(mAng < 0) mAng += Math.PI*2;
+      if(checkSweep(oldAng, sweepAng, mAng)) {
+        blips.push({x: mdx, y: mdz, life: 1.0, type: 'person'});
       }
     }
-  });
-
-  // Domes
-  ringsPool.forEach(r=>{
-    if(r.userData.active){
-      r.userData.t+=dt*(r.userData.isMotion?1.5:1.0);
-      if(r.userData.t>2.0){
-        r.userData.active=false;
-        r.material.opacity=0;
-      }else{
-        const prog=r.userData.t/2.0;
-        r.scale.setScalar(prog*12); // giant spheres
-        r.material.opacity=(1-prog)*(r.userData.isMotion?0.15:0.05);
-      }
-    }
-  });
-
-  // Human silhouette
-  const conf=sysState.conf||0;
-  if(conf>0 && spheres.laptop && spheres.phone){
-    const center=new THREE.Vector3().addVectors(spheres.laptop.position, spheres.phone.position).multiplyScalar(0.5);
-    humanGroup.position.lerp(center, 0.1);
-    
-    // Pulse based on confidence and time
-    const pulse = 0.6 + Math.sin(t*8)*0.2;
-    humanGroup.userData.bodyMat.opacity = conf * pulse;
-    humanGroup.userData.jointMat.opacity = conf * 0.9;
-    humanGroup.userData.baseMat.opacity = conf * 0.3;
-    
-    // Bobbing motion
-    humanGroup.userData.joints.forEach((j, i) => {
-        j.position.y += Math.sin(t*10 + i)*0.002;
-    });
-  }else{
-    humanGroup.userData.bodyMat.opacity *= 0.9;
-    humanGroup.userData.jointMat.opacity *= 0.9;
-    humanGroup.userData.baseMat.opacity *= 0.9;
   }
 
-  renderer.render(scene,camera);
+  // Draw Blips
+  for(let i=blips.length-1; i>=0; i--){
+    let b = blips[i];
+    b.life -= 0.008; // fade rate
+    if(b.life <= 0){ blips.splice(i,1); continue; }
+    
+    let bx = cx + b.x * scale;
+    let by = cy + b.y * scale; 
+    let color = b.type==='person' ? '229,62,62' : '186,117,23';
+    
+    ctx.beginPath();
+    ctx.arc(bx, by, b.type==='person' ? 6*window.devicePixelRatio : 4*window.devicePixelRatio, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(${color}, ${b.life})`;
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = `rgba(${color}, 1)`;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+
+  // Draw Laptop (Center Origin)
+  ctx.beginPath();
+  ctx.arc(cx, cy, 6*window.devicePixelRatio, 0, Math.PI*2);
+  ctx.fillStyle = '#378ADD';
+  ctx.shadowBlur = 15;
+  ctx.shadowColor = '#378ADD';
+  ctx.fill();
+  ctx.shadowBlur = 0;
 }
+requestAnimationFrame(renderRadar);
 
 // ── CHARTS ──
 const mCtx=$('mainChart').getContext('2d');
@@ -561,15 +326,6 @@ const mainChart=new Chart(mCtx,{
   }
 });
 
-const sparks={};
-KEYS.forEach(k=>{
-  sparks[k]=new Chart($(`spark-${k}`).getContext('2d'),{
-    type:'line',
-    data:{labels:Array(20).fill(''),datasets:[{borderColor:COLS[k],borderWidth:1.5,pointRadius:0,tension:0.2,data:Array(20).fill(null)}]},
-    options:{responsive:true,maintainAspectRatio:false,animation:false,scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false}}}
-  });
-});
-
 // ── UPDATE LOGIC ──
 function processData(d){
   sysState.state=d.state||'IDLE';
@@ -577,63 +333,37 @@ function processData(d){
   sysState.nodes=d.nodes||{};
   sysState.pos=d.positions||{};
 
-  // Convert Windows % back to approximate dBm for display
-  const toDbm = (sig) => Math.round((sig/2)-100);
+  const c = SCOLS[sysState.state] || '#888';
+  $('hudState').style.borderColor = c;
+  $('hudDot').style.background = c;
+  $('hudTxt').style.color = c;
+  $('hudTxt').textContent = sysState.state;
 
-  // HUD updates
-  $('hudStateTxt').textContent=sysState.state;
-  $('hudStatePill').style.color=SCOLS[sysState.state]||'#888';
-  $('hudStatePill').style.borderColor=SCOLS[sysState.state]||'#888';
-  $('hudDot').style.background=SCOLS[sysState.state]||'#888';
+  $('val-conf').innerHTML = `${Math.round(sysState.conf*100)}<span>%</span>`;
   
-  $('metric-conf').innerHTML=`${Math.round(sysState.conf*100)}<span>%</span>`;
-  $('confBar').style.width=`${Math.round(sysState.conf*100)}%`;
-  $('confBar').style.background=SCOLS[sysState.state];
-
   let maxVar = 0;
   KEYS.forEach((k,i)=>{
-    const n=sysState.nodes[k]||{};
-    const online=n.online!==false;
-    
-    const cEl = document.getElementById(`card-${k}`);
-    if(n.motion) cEl.style.borderColor = 'var(--motion)';
-    else cEl.style.borderColor = 'var(--glass-border)';
+    const n = sysState.nodes[k] || {};
+    const card = $(`card-${k}`);
+    if(n.motion) card.style.borderColor = 'var(--motion)';
+    else card.style.borderColor = 'rgba(255,255,255,0.08)';
 
-    document.getElementById(`sig-${k}`).innerHTML=`${toDbm(n.signal||0)}<small>dBm</small>`;
+    $(`sig-${k}`).innerHTML = `${Math.round((n.signal||0)/2 - 100)}<small>dBm</small>`;
     
-    const zEl = document.getElementById(`z-${k}`);
-    zEl.textContent=`v: ${(n.zscore||0).toFixed(2)}`;
-    if(n.zscore > 2.0) zEl.style.color = 'var(--motion)';
-    else if(n.zscore > 1.5) zEl.style.color = 'var(--activity)';
-    else zEl.style.color = 'var(--muted)';
+    let z = n.zscore || 0;
+    $(`z-${k}`).textContent = `Var: ${z.toFixed(2)}`;
+    if(z > 2.0) $(`z-${k}`).style.color = 'var(--motion)';
+    else if(z > 1.5) $(`z-${k}`).style.color = 'var(--activity)';
+    else $(`z-${k}`).style.color = 'var(--muted)';
     
-    if(Math.abs(n.zscore||0) > maxVar) maxVar = Math.abs(n.zscore||0);
-
-    if(sysState.pos[k] && k!=='extender') document.getElementById(`dist-${k}`).textContent=`${(sysState.pos[k].distance_from_extender||0).toFixed(1)} m`;
+    if(Math.abs(z) > maxVar) maxVar = Math.abs(z);
 
     history[k].push(n.smoothed||n.signal||0);
     if(history[k].length>60)history[k].shift();
     mainChart.data.datasets[i].data=history[k];
-
-    sparkH[k].push(n.signal||0);
-    if(sparkH[k].length>20)sparkH[k].shift();
-    sparks[k].data.datasets[0].data=sparkH[k];
-    sparks[k].update();
   });
   mainChart.update();
-  
-  $('metric-mot').innerHTML=`${maxVar.toFixed(2)}<span>VAR</span>`;
-
-  if(d.motion && !d.cooldown && sysState.state!=='CALIBRATING'){
-    const ts=new Date().toTimeString().slice(0,8);
-    const stCode=sysState.state.substring(0,3);
-    const div=document.createElement('div');
-    div.className='log-entry motion';
-    div.innerHTML=`<span class="le-time">[${ts}]</span><span class="le-state ${stCode}" style="color:${SCOLS[sysState.state]}">${stCode}</span><span>src:${d.source}</span>`;
-    $('logList').prepend(div);
-    if($('logList').children.length>30) $('logList').lastChild.remove();
-    logEvents.push({ts,st:sysState.state,src:d.source,conf:sysState.conf});
-  }
+  $('val-var').innerHTML = `${maxVar.toFixed(2)}<span>v</span>`;
 }
 
 // ── POLLING / SIM ──
@@ -643,10 +373,9 @@ async function poll(){
     const r=await fetch('/fused');
     if(!r.ok)throw new Error();
     processData(await r.json());
-    failStrikes=0;$('offlineBanner').classList.remove('visible');
+    $('offlineBanner').classList.remove('visible');
   }catch(e){
-    failStrikes++;
-    if(failStrikes>=3) $('offlineBanner').classList.add('visible');
+    $('offlineBanner').classList.add('visible');
   }
 }
 
@@ -656,63 +385,34 @@ function runSim(){
   let isBurst = (simT%15>0 && simT%15<6);
   let ld = 78 + Math.sin(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
   let pd = 65 + Math.cos(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
-  let md = isBurst;
-  let conf = isBurst?0.80:0;
+  let conf = isBurst?0.85:0;
   
   processData({
     state: isBurst?'MOTION':'IDLE',
     confidence: conf,
-    source: isBurst?'laptop+phone':'none',
-    active_nodes: 3, cooldown: false,
     nodes: {
       extender:{signal:71,smoothed:71,zscore:0.2,motion:false,online:true,calibrated:true},
-      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?2.6:0.5,motion:md,online:true,calibrated:true},
-      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?2.1:0.1,motion:md,online:true,calibrated:true}
+      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?2.8:0.5,motion:isBurst,online:true,calibrated:true},
+      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?2.3:0.1,motion:isBurst,online:true,calibrated:true}
     },
     positions: {
-      extender:{x:0,y:0,z:0,fixed:true},
-      router:{x:0,y:0,z:-4,fixed:true},
-      laptop:{x:2.1,y:0.9,z:0.2,distance_from_extender:isBurst?2.8:2.3,fixed:false},
-      phone:{x:-1.8,y:1.5,z:0.05,distance_from_extender:isBurst?3.0:2.4,fixed:false}
+      extender:{x:0,y:0,z:0},
+      laptop:{x:2.1,y:0,z:0.2},
+      phone:{x:-1.8,y:0,z:0.05}
     }
   });
 }
 
-// ── INIT ──
-function setView(v) {
-  currentView = v;
-  ['btn3D', 'btnTop'].forEach(id => $(id).classList.remove('active'));
-  $(`btn${v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()}`).classList.add('active');
-  
-  if (v === '3D') {
-      camera.position.set(0, 8, 14); camera.lookAt(0, 0, 0);
-      autoRotate = true; 
-  } else if (v === 'TOP') {
-      camera.position.set(0, 18, 0.01); camera.lookAt(0, 0, 0);
-      autoRotate = false; 
-  }
-}
-
-$('btn3D').onclick=()=>setView('3D');
-$('btnTop').onclick=()=>setView('TOP');
-
-$('btnSimOff').onclick=e=>{
-  simMode=!simMode; 
-  e.target.textContent=simMode?"SIM ON":"SIM OFF";
-  e.target.style.color = simMode ? '#FAFAF8' : 'var(--watching)';
-  e.target.style.borderColor = simMode ? 'var(--border)' : 'rgba(217,119,6,0.3)';
-  e.target.classList.toggle('active',simMode);
+$('btnSim').onclick=e=>{
+  simMode=!simMode;
+  e.target.textContent = simMode ? 'SIMULATOR: ON' : 'SIMULATOR: OFF';
+  e.target.classList.toggle('active', simMode);
+};
+$('btnMute').onclick=e=>{
+  muted=!muted;
+  e.target.textContent = muted ? 'SOUND OFF' : 'SOUND ON';
 };
 
-$('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'SOUND OFF':'SOUND ON';e.target.classList.toggle('active',!muted);};
-$('thrSlider').oninput=e=>{$('thrVal').textContent=e.target.value;if(!simMode)fetch('/set_threshold/'+e.target.value).catch(()=>{});};
-$('btnExport').onclick=()=>{
-  let csv='Time,State,Source,Conf\n'+logEvents.map(e=>`${e.ts},${e.st},${e.src},${e.conf}`).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv]));
-  a.download='events.csv';a.click();
-};
-
-init3D();
 setInterval(poll,1000);
 poll();
 </script>
