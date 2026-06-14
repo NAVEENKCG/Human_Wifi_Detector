@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wi-Fi RF Human Sensing Dashboard (Production)</title>
+<title>Wi-Fi RF Human Sensing Dashboard (Production v2)</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -39,7 +39,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 #scene-col{width:55%;height:100vh;position:relative;}
 #panel-col{width:45%;height:100vh;overflow-y:auto;padding:24px;
   display:flex;flex-direction:column;gap:16px;background:rgba(15,20,36,0.5);
-  border-left:1px solid var(--border); padding-bottom: 80px;} /* space for drawer */
+  border-left:1px solid var(--border); padding-bottom: 80px;} 
 
 @media(max-width:768px){
   body{flex-direction:column;overflow-y:auto;}
@@ -55,9 +55,27 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .blink-dot{width:6px;height:6px;background:var(--motion);border-radius:50%;
   animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
-.hud-state{font-size:1.4rem;font-weight:800;letter-spacing:0.04em;margin-bottom:4px;
-  text-shadow:0 0 10px rgba(0,0,0,0.5);}
-.hud-conf{font-size:0.8rem;color:var(--text);font-weight:600;}
+.hud-state-pill{display:inline-block; padding:4px 10px; border-radius:12px; font-size:1rem; font-weight:800; letter-spacing:0.04em; margin-bottom:4px;
+  background:rgba(0,0,0,0.5); border:1px solid var(--border); transition:0.3s;}
+.hud-conf{font-size:0.8rem;color:var(--text);font-weight:600; margin-top:4px;}
+
+/* ── View Controls ── */
+.view-controls{position:absolute; top:20px; right:20px; display:flex; gap:8px; z-index:10;}
+.btn-view{background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); padding:4px 10px; border-radius:6px; font-family:var(--font); font-size:0.6rem; cursor:pointer; transition:0.2s; backdrop-filter:blur(4px);}
+.btn-view:hover{background:rgba(255,255,255,0.1);}
+.btn-view.active{background:rgba(255,255,255,0.15); color:var(--text); border-color:var(--dim);}
+
+/* ── Coordinates HUD ── */
+.coords-hud{position:absolute; bottom:20px; left:20px; z-index:10; font-size:0.6rem; color:var(--text); background:rgba(10,13,26,0.8); padding:10px 12px; border-radius:8px; border:1px solid var(--border); backdrop-filter:blur(4px); pointer-events:none; min-width:180px;}
+.coords-hud .tt-title{color:var(--muted); margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;}
+.coord-row{display:flex; justify-content:space-between; margin-bottom:2px;}
+.coord-lbl{font-weight:700;}
+
+/* ── Calibration Overlay ── */
+.cal-overlay{position:absolute; inset:0; background:rgba(5,8,16,0.7); z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; backdrop-filter:blur(2px); transition:opacity 0.5s;}
+.cal-spinner{width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--watching); border-radius:50%; animation:spin 1s linear infinite; margin-bottom:16px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.cal-text{font-size:0.8rem; color:var(--watching); font-weight:700; letter-spacing:0.1em;}
 
 /* ── Tooltip ── */
 #nodeTooltip{
@@ -67,7 +85,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
   transform:translate(-50%,-100%); margin-top:-15px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
   backdrop-filter:blur(4px); white-space:nowrap;
 }
-.tt-title{font-weight:800;font-size:0.75rem;margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px;}
+.tt-title{font-weight:800;font-size:0.75rem;}
 .tt-row{display:flex;justify-content:space-between;gap:12px;margin-bottom:2px;}
 .tt-lbl{color:var(--muted);}
 
@@ -93,7 +111,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 /* ── Node Cards ── */
 .node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
 .node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
-  padding:12px;position:relative;display:flex;flex-direction:column;gap:8px;}
+  padding:12px;position:relative;display:flex;flex-direction:column;gap:8px; transition:border-color 0.3s;}
 .nc-header{display:flex;justify-content:space-between;align-items:center;}
 .nc-name{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;}
 .nc-status{font-size:0.55rem;font-weight:600;padding:2px 6px;border-radius:4px;
@@ -104,7 +122,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .nc-metrics{display:flex;justify-content:space-between;align-items:baseline;}
 .nc-sig{font-size:1.4rem;font-weight:800;line-height:1;}
 .nc-sig small{font-size:0.6rem;color:var(--muted);font-weight:400;}
-.nc-z{font-size:0.6rem;color:var(--muted);}
+.nc-z{font-size:0.6rem;font-weight:700;}
 .nc-dist{font-size:0.6rem;color:var(--text);font-weight:600;margin-top:2px;display:flex;justify-content:space-between;}
 .nc-dist span{color:var(--muted);font-weight:400;}
 .sparkline{width:100%;height:20px;margin-top:auto;}
@@ -149,9 +167,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 .mute-btn.active{color:var(--motion);}
 .btn-toggle{background:var(--glass);border:1px solid var(--border);color:var(--muted);
   padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.6rem;cursor:pointer; transition:0.2s;}
-.btn-toggle.active{background:rgba(255,255,255,0.1);color:var(--text); border-color:rgba(255,255,255,0.2);}
+.btn-toggle.active{background:rgba(255,255,255,0.15);color:var(--text); border-color:rgba(255,255,255,0.2);}
 
-/* ── Bottom Drawer (Session Stats) ── */
+/* ── Bottom Drawer (Stats) ── */
 .bottom-drawer{
   position:fixed; bottom:0; left:0; width:100%;
   background:rgba(10,13,26,0.95); backdrop-filter:blur(10px);
@@ -178,7 +196,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
   font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px);}
 .offline-banner.visible{display:block;}
 
-.ws-indicator{position:absolute; top:20px; right:20px; font-size:0.6rem; padding:4px 8px; border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); z-index:10;}
+.ws-indicator{position:absolute; bottom:20px; right:20px; font-size:0.6rem; padding:4px 8px; border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); z-index:10;}
 .ws-indicator.active{color:var(--idle); border-color:rgba(56,161,105,0.3);}
 </style>
 </head>
@@ -190,10 +208,32 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 <!-- LEFT COLUMN: 3D SCENE -->
 <div id="scene-col">
   <div class="ws-indicator" id="wsIndicator">WS: OFF</div>
+  
+  <div class="cal-overlay" id="calOverlay">
+    <div class="cal-spinner"></div>
+    <div class="cal-text">ESTABLISHING BASELINE...</div>
+  </div>
+
+  <div class="view-controls">
+    <button class="btn-view active" id="btn3D">3D</button>
+    <button class="btn-view" id="btnTop">TOP</button>
+    <button class="btn-view" id="btnFloor">FLOOR</button>
+    <button class="btn-view" style="color:var(--watching);border-color:rgba(217,119,6,0.3);" id="btnSimOff">SIM OFF</button>
+  </div>
+
+  <div class="coords-hud">
+    <div class="tt-title">COORDINATES (m)</div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--extender)">EXT</span> <span id="c-extender">0.00, 0.00, 0.00</span></div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--laptop)">LAP</span> <span id="c-laptop">--, --, --</span></div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--phone)">PHN</span> <span id="c-phone">--, --, --</span></div>
+    <div class="coord-row"><span class="coord-lbl" style="color:#534AB7">RTR</span> <span id="c-router">0.00, -4.00, 0.00</span></div>
+  </div>
+
   <canvas id="threeCanvas"></canvas>
+  
   <div id="hudOverlay">
     <div class="hud-title"><div class="blink-dot"></div> RF VISION ACTIVE</div>
-    <div class="hud-state" id="hudState">CALIBRATING</div>
+    <div class="hud-state-pill" id="hudStatePill">CALIBRATING</div>
     <div class="hud-conf" id="hudConf">CONFIDENCE: 0%</div>
   </div>
 </div>
@@ -220,7 +260,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 
   <!-- NODE CARDS -->
   <div class="node-grid">
-    <div class="node-card" style="border-top:2px solid var(--laptop)">
+    <div class="node-card" id="card-laptop" style="border-top:2px solid var(--laptop)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--laptop)">Laptop</span>
         <span class="nc-status cal" id="ns-laptop">CAL</span>
@@ -232,7 +272,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
       <div class="nc-dist">Dist: <span id="dist-laptop">-- m</span></div>
       <canvas class="sparkline" id="spark-laptop"></canvas>
     </div>
-    <div class="node-card" style="border-top:2px solid var(--phone)">
+    <div class="node-card" id="card-phone" style="border-top:2px solid var(--phone)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--phone)">Phone</span>
         <span class="nc-status cal" id="ns-phone">CAL</span>
@@ -244,7 +284,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
       <div class="nc-dist">Dist: <span id="dist-phone">-- m</span></div>
       <canvas class="sparkline" id="spark-phone"></canvas>
     </div>
-    <div class="node-card" style="border-top:2px solid var(--extender)">
+    <div class="node-card" id="card-extender" style="border-top:2px solid var(--extender)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--extender)">Extender</span>
         <span class="nc-status cal" id="ns-extender">CAL</span>
@@ -286,20 +326,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
         <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
       </label>
       <button class="btn-toggle active" id="btnRotate">ROTATE</button>
-      <button class="btn-toggle" id="btnView2D">2D VIEW</button>
     </div>
     <div class="ctrl-group">
-      <label class="ctrl-lbl">
-        <input type="checkbox" id="simToggle"> SIM MODE
-      </label>
-      <span class="sim-badge" id="simBadge">[SIM]</span>
       <button class="mute-btn" id="btnMute">&#128266;</button>
     </div>
   </div>
 
 </div>
 
-<!-- BOTTOM DRAWER (STATS) -->
+<!-- BOTTOM DRAWER -->
 <div class="bottom-drawer" id="bottomDrawer">
   <div class="drawer-handle-area" id="drawerHandleArea">
     <div class="drawer-handle"></div>
@@ -345,17 +380,16 @@ let sysState={state:'CALIBRATING',conf:0,nodes:{},pos:{}};
 let history={laptop:[],phone:[],extender:[]};
 let sparkH={laptop:[],phone:[],extender:[]};
 let logEvents=[];
-let muted=false, simMode=false, autoRotate=true, is2D=false;
+let muted=false, simMode=false, autoRotate=true, currentView='3D';
 let failStrikes=0;
 let wsConnected=false;
+let allNodesCalibrated=false;
 
-// Session Stats
 let sessStart = Date.now();
 let sessEvents = 0;
 let sessConfSum = 0;
 let nodeTriggers = {laptop:0, phone:0, extender:0};
 
-// Audio
 let actx=null;
 function beep(f,d=80){
   if(muted)return;
@@ -373,7 +407,6 @@ let spheres={}, ringsPool=[], links={}, personZone, personLabel;
 let isDragging=false, dragTimer=0;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
-let hoveredNode = null;
 
 function createTextSprite(msg, color){
   const canvas=document.createElement('canvas');
@@ -409,6 +442,13 @@ function init3D(){
   const pl=new THREE.PointLight(0xffffff,0.5);
   pl.position.set(0,10,0);
   scene.add(pl);
+
+  // Axes
+  const axes = new THREE.AxesHelper(2);
+  scene.add(axes);
+  const lx=createTextSprite("X →","#ff4444"); lx.position.set(2.5,0,0); lx.scale.set(2,0.5,1); scene.add(lx);
+  const ly=createTextSprite("Y ↑","#44ff44"); ly.position.set(0,2.5,0); ly.scale.set(2,0.5,1); scene.add(ly);
+  const lz=createTextSprite("Z →","#4444ff"); lz.position.set(0,0,2.5); lz.scale.set(2,0.5,1); scene.add(lz);
 
   // Floors
   const gGeo=new THREE.PlaneGeometry(20,20);
@@ -452,16 +492,23 @@ function init3D(){
   spheres.phone.dRing=makeDistRing(0xBA7517);
 
   // Person Zone
+  personZone=new THREE.Group();
   const pzGeo=new THREE.IcosahedronGeometry(1,2);
-  const pzMat=new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:0,wireframe:true});
-  personZone=new THREE.Mesh(pzGeo,pzMat);
+  const pzMat=new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:0});
+  const pzWireMat=new THREE.MeshBasicMaterial({color:0xff4444,transparent:true,opacity:0,wireframe:true});
+  const pzMesh=new THREE.Mesh(pzGeo,pzMat);
+  const pzWire=new THREE.Mesh(pzGeo,pzWireMat);
+  personZone.add(pzMesh);
+  personZone.add(pzWire);
   scene.add(personZone);
+  personZone.userData = {mesh:pzMesh, wire:pzWire};
+
   personLabel=createTextSprite("PERSON?","#ff4444");
   personLabel.visible=false;
   scene.add(personLabel);
 
-  // Rings pool
-  for(let i=0;i<15;i++){
+  // Rings pool (24)
+  for(let i=0;i<24;i++){
     const rg=new THREE.TorusGeometry(1,0.02,4,32);
     const rm=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0});
     const r=new THREE.Mesh(rg,rm);
@@ -471,15 +518,15 @@ function init3D(){
     ringsPool.push(r);
   }
 
-  // Interaction (Camera & Tooltips)
+  // Interaction
   let isDown=false;
   renderer.domElement.addEventListener('pointerdown',()=>{isDown=true;isDragging=true;});
   renderer.domElement.addEventListener('pointerup',()=>{isDown=false;dragTimer=3.0;});
   renderer.domElement.addEventListener('pointermove',(e)=>{
-    if(isDown && !is2D){
+    if(isDown && currentView==='3D'){
       camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-e.movementX*0.01);
       camera.position.y+=e.movementY*0.02;
-      camera.lookAt(0, is2D?0:-1, 0);
+      camera.lookAt(0,-1,0);
     }
     
     // Tooltip Raycast
@@ -510,7 +557,6 @@ function init3D(){
       } else {
         html += `<div class="tt-row"><span class="tt-lbl">Type:</span> <span>Fixed Anchor</span></div>`;
       }
-      
       tt.innerHTML = html;
       tt.style.display = 'block';
       tt.style.left = e.clientX + 'px';
@@ -557,7 +603,19 @@ function makeNode(color, r, labelText, hasTorus, key){
   g.add(lbl);
   g.userData.lbl = lbl;
 
-  g.userData={...g.userData, mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3()};
+  // Drop line and shadow
+  const dlGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
+  const dlMat=new THREE.LineDashedMaterial({color:0x888888,dashSize:0.1,gapSize:0.1});
+  const dl=new THREE.Line(dlGeo,dlMat);
+  scene.add(dl);
+  
+  const sdGeo=new THREE.CircleGeometry(0.12,16);
+  const sdMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.4});
+  const sd=new THREE.Mesh(sdGeo,sdMat);
+  sd.rotation.x=-Math.PI/2;
+  scene.add(sd);
+
+  g.userData={...g.userData, mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3(), dropLine:dl, shadow:sd};
   scene.add(g);
   return g;
 }
@@ -572,7 +630,7 @@ function makeLink(){
 
 function makeDistRing(color){
   const geo=new THREE.RingGeometry(0.95,1.05,64);
-  const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.2,side:THREE.DoubleSide});
+  const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.15,side:THREE.DoubleSide});
   const mesh=new THREE.Mesh(geo,mat);
   mesh.rotation.x=Math.PI/2;
   mesh.position.y=0.01;
@@ -586,7 +644,7 @@ function emitRings(){
   KEYS.forEach(k=>{
     if(n[k]&&n[k].online){
       spawnRing(k,n[k].motion);
-      if(n[k].motion) setTimeout(()=>spawnRing(k,true),1000); // double fast
+      if(n[k].motion) setTimeout(()=>spawnRing(k,true),1000);
     }
   });
 }
@@ -608,13 +666,12 @@ function render3D(){
   const t=clock.getElapsedTime();
 
   // Auto rotate
-  if(!isDragging && autoRotate && !is2D){
+  if(!isDragging && autoRotate && currentView==='3D'){
     camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.002);
     camera.lookAt(0,-1,0);
   }
   if(dragTimer>0){dragTimer-=dt; if(dragTimer<=0)isDragging=false;}
 
-  // Extender Torus
   if(spheres.extender.userData.torus) spheres.extender.userData.torus.rotation.z-=0.5*dt;
 
   const n=sysState.nodes||{};
@@ -626,17 +683,26 @@ function render3D(){
     if(pos[k]){
       s.userData.targetPos.set(pos[k].x,pos[k].y,pos[k].z);
       s.position.lerp(s.userData.targetPos, 0.05);
+      // Update coords HUD
+      const cstr = `${pos[k].x.toFixed(2)}, ${pos[k].y.toFixed(2)}, ${pos[k].z.toFixed(2)}`;
+      if($(`c-${k}`)) $(`c-${k}`).textContent = cstr;
     }
     
-    // 2D view label adjustments
+    // Labels orient
     if(s.userData.lbl){
-      s.userData.lbl.position.y = is2D ? 0 : (s.userData.r + 0.3);
-      s.userData.lbl.position.z = is2D ? -0.5 : 0;
-      
-      // In 2D view add signal % to label if online
-      if(is2D && n[k] && n[k].online){
-         // Handled natively by creating extra sprite or just keep it simple
-      }
+      s.userData.lbl.position.y = currentView==='TOP' ? 0 : (s.userData.r + 0.3);
+      s.userData.lbl.position.z = currentView==='TOP' ? -0.5 : 0;
+    }
+    
+    // Drop lines & shadows
+    if(s.userData.dropLine){
+      const fy = (k==='router')?-4:0;
+      const pts = s.userData.dropLine.geometry.attributes.position.array;
+      pts[0]=s.position.x; pts[1]=s.position.y; pts[2]=s.position.z;
+      pts[3]=s.position.x; pts[4]=fy; pts[5]=s.position.z;
+      s.userData.dropLine.geometry.attributes.position.needsUpdate=true;
+      s.userData.dropLine.computeLineDistances();
+      s.userData.shadow.position.set(s.position.x, fy+0.01, s.position.z);
     }
     
     if(k==='laptop'||k==='phone'){
@@ -660,8 +726,6 @@ function render3D(){
           s.userData.light.intensity=0;
         }
       }
-      
-      // Dist rings
       if(s.dRing && pos[k]){
         const d=pos[k].distance_from_extender||0;
         s.dRing.scale.setScalar(d||0.001);
@@ -669,11 +733,9 @@ function render3D(){
     }
   });
 
-  // Links
   if(pos.laptop) updateLink(links.ext_lap, spheres.extender.position, spheres.laptop.position, n.extender, n.laptop);
   if(pos.phone) updateLink(links.ext_phn, spheres.extender.position, spheres.phone.position, n.extender, n.phone);
 
-  // Rings
   ringsPool.forEach(r=>{
     if(r.userData.active){
       r.userData.t+=dt*(r.userData.isMotion?2.0:1.0);
@@ -688,23 +750,24 @@ function render3D(){
     }
   });
 
-  // Person Zone
   const conf=sysState.conf||0;
   if(conf>0 && spheres.laptop && spheres.phone){
     const center=new THREE.Vector3().addVectors(spheres.laptop.position, spheres.phone.position).multiplyScalar(0.5);
     personZone.position.copy(center);
     const r=Math.max(0.1, conf*3);
     personZone.scale.setScalar(r);
-    personZone.material.opacity=conf*0.15;
+    personZone.userData.mesh.material.opacity=conf*0.15;
+    personZone.userData.wire.material.opacity=conf*0.4;
     
     personLabel.visible=(conf>=0.5);
     if(personLabel.visible){
       personLabel.position.copy(center);
-      personLabel.position.y += is2D ? 0 : (r+0.5);
-      personLabel.position.z = is2D ? -r-0.5 : 0;
+      personLabel.position.y += currentView==='TOP' ? 0 : (r+0.5);
+      personLabel.position.z = currentView==='TOP' ? -r-0.5 : 0;
     }
   }else{
-    personZone.material.opacity=0;
+    personZone.userData.mesh.material.opacity=0;
+    personZone.userData.wire.material.opacity=0;
     personLabel.visible=false;
   }
 
@@ -723,7 +786,6 @@ function updateLink(line, p1, p2, n1, n2){
   else line.material.color.setHex(0xffffff);
 }
 
-
 // ── CHARTS ──
 const mCtx=$('mainChart').getContext('2d');
 const mainChart=new Chart(mCtx,{
@@ -733,7 +795,7 @@ const mainChart=new Chart(mCtx,{
     {borderColor:'#BA7517',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)},
     {borderColor:'#1D9E75',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)}
   ]},
-  options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},
+  options:{responsive:true,maintainAspectRatio:false,animation:false,
     scales:{x:{display:false},y:{min:0,max:100,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#6b7a99'}}},
     plugins:{legend:{display:false}}
   }
@@ -744,7 +806,7 @@ KEYS.forEach(k=>{
   sparks[k]=new Chart($(`spark-${k}`).getContext('2d'),{
     type:'line',
     data:{labels:Array(20).fill(''),datasets:[{borderColor:COLS[k],borderWidth:1.5,pointRadius:0,tension:0.2,data:Array(20).fill(null)}]},
-    options:{responsive:true,maintainAspectRatio:false,animation:{duration:0},scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false}}}
+    options:{responsive:true,maintainAspectRatio:false,animation:false,scales:{x:{display:false},y:{display:false}},plugins:{legend:{display:false}}}
   });
 });
 
@@ -756,7 +818,6 @@ function processData(d){
   sysState.nodes=d.nodes||{};
   sysState.pos=d.positions||{};
 
-  // Audio
   if(sysState.state!==lastStateStr && !d.cooldown){
     if(sysState.state==='ACTIVITY')beep(220,80);
     else if(sysState.state==='MOTION')beep(440,100);
@@ -764,12 +825,11 @@ function processData(d){
   }
   lastStateStr=sysState.state;
 
-  // HUD
-  $('hudState').textContent=sysState.state;
-  $('hudState').style.color=SCOLS[sysState.state]||'#888';
+  $('hudStatePill').textContent=sysState.state;
+  $('hudStatePill').style.color=SCOLS[sysState.state]||'#888';
+  $('hudStatePill').style.borderColor=SCOLS[sysState.state]||'#888';
   $('hudConf').textContent=`CONFIDENCE: ${Math.round(sysState.conf*100)}%`;
 
-  // Panel
   $('spState').textContent=sysState.state;
   $('spState').style.color=SCOLS[sysState.state]||'#888';
   $('spDesc').textContent=SDESC[sysState.state]||'';
@@ -778,22 +838,35 @@ function processData(d){
   $('spConfFill').style.width=`${Math.round(sysState.conf*100)}%`;
   $('spConfFill').className='conf-fill '+(sysState.conf>0.65?'red':sysState.conf>0.25?'amber':'green');
 
-  // Nodes
+  let activeCalibrated = 0;
+  let activeNodesCount = 0;
+
   KEYS.forEach((k,i)=>{
     const n=sysState.nodes[k]||{};
     const online=n.online!==false;
     
+    if(online) activeNodesCount++;
+    if(online && n.calibrated) activeCalibrated++;
+    
+    const cEl = document.getElementById(`card-${k}`);
+    if(n.motion) cEl.style.borderColor = 'var(--motion)';
+    else cEl.style.borderColor = 'var(--glass-border)';
+
     let stEl=document.getElementById(`ns-${k}`);
     if(!online){stEl.textContent='OFF';stEl.className='nc-status off';}
     else if(!n.calibrated){stEl.textContent='CAL';stEl.className='nc-status cal';}
     else{stEl.textContent='ON';stEl.className='nc-status on';}
 
     document.getElementById(`sig-${k}`).innerHTML=`${n.signal||0}<small>%</small>`;
-    document.getElementById(`z-${k}`).textContent=`z: ${(n.zscore||0).toFixed(2)}`;
+    
+    const zEl = document.getElementById(`z-${k}`);
+    zEl.textContent=`z: ${(n.zscore||0).toFixed(2)}`;
+    if(n.zscore > 2.0) zEl.style.color = 'var(--motion)';
+    else if(n.zscore > 1.5) zEl.style.color = 'var(--activity)';
+    else zEl.style.color = 'var(--idle)';
     
     if(sysState.pos[k] && k!=='extender') document.getElementById(`dist-${k}`).textContent=`${(sysState.pos[k].distance_from_extender||0).toFixed(1)} m`;
 
-    // Charts
     history[k].push(n.smoothed||n.signal||0);
     if(history[k].length>60)history[k].shift();
     mainChart.data.datasets[i].data=history[k];
@@ -805,7 +878,18 @@ function processData(d){
   });
   mainChart.update();
 
-  // Log detect
+  if(activeNodesCount > 0 && activeCalibrated === activeNodesCount) {
+     if(!allNodesCalibrated) {
+         allNodesCalibrated = true;
+         $('calOverlay').style.opacity = '0';
+         setTimeout(()=>$('calOverlay').style.display = 'none', 500);
+     }
+  } else {
+     allNodesCalibrated = false;
+     $('calOverlay').style.display = 'flex';
+     setTimeout(()=>$('calOverlay').style.opacity = '1', 50);
+  }
+
   if(d.motion && !d.cooldown && sysState.state!=='CALIBRATING'){
     const ts=new Date().toTimeString().slice(0,8);
     const stCode=sysState.state.substring(0,3);
@@ -816,7 +900,6 @@ function processData(d){
     if($('logList').children.length>30) $('logList').lastChild.remove();
     logEvents.push({ts,st:sysState.state,src:d.source,conf:sysState.conf});
     
-    // Update Stats
     sessEvents++;
     sessConfSum += sysState.conf;
     if(d.source){
@@ -829,15 +912,12 @@ function processData(d){
 
 function updateStats(){
   $('stat-total').textContent = sessEvents;
-  
   const hrs = (Date.now() - sessStart) / 3600000;
   $('stat-eph').textContent = (sessEvents / Math.max(hrs, 0.01)).toFixed(1);
-  
   let best='--', max=0;
   KEYS.forEach(k=>{ if(nodeTriggers[k]>max){max=nodeTriggers[k]; best=k;} });
   $('stat-active').textContent = best.toUpperCase();
   $('stat-active').style.color = COLS[best]? '#'+COLS[best].toString(16) : 'inherit';
-  
   $('stat-avg-conf').textContent = sessEvents ? Math.round((sessConfSum/sessEvents)*100)+'%' : '0%';
 }
 
@@ -846,30 +926,16 @@ let ws = null;
 function initWS(){
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-  ws.onopen = () => {
-    wsConnected = true;
-    $('wsIndicator').textContent = 'WS: ON';
-    $('wsIndicator').classList.add('active');
-  };
-  ws.onmessage = (e) => {
-    try {
-      const data = JSON.parse(e.data);
-      processData(data);
-      failStrikes = 0; $('offlineBanner').classList.remove('visible');
-    } catch(err){}
-  };
+  ws.onopen = () => { wsConnected = true; $('wsIndicator').textContent = 'WS: ON'; $('wsIndicator').classList.add('active'); };
+  ws.onmessage = (e) => { try { processData(JSON.parse(e.data)); failStrikes=0; $('offlineBanner').classList.remove('visible'); } catch(err){} };
   ws.onerror = () => { wsConnected = false; updateWSIndicator(); };
   ws.onclose = () => { wsConnected = false; updateWSIndicator(); setTimeout(initWS, 5000); };
 }
-function updateWSIndicator() {
-  $('wsIndicator').textContent = 'WS: OFF (POLLING)';
-  $('wsIndicator').classList.remove('active');
-}
+function updateWSIndicator() { $('wsIndicator').textContent = 'WS: OFF (POLLING)'; $('wsIndicator').classList.remove('active'); }
 
 async function poll(){
   if(simMode){runSim();return;}
-  if(wsConnected) return; // let WS handle it
-  
+  if(wsConnected) return; 
   try{
     const r=await fetch('/fused');
     if(!r.ok)throw new Error();
@@ -881,7 +947,6 @@ async function poll(){
   }
 }
 
-// Sim logic simplified for client
 let simT=0;
 function runSim(){
   simT++;
@@ -898,8 +963,8 @@ function runSim(){
     active_nodes: 3, cooldown: false,
     nodes: {
       extender:{signal:71,smoothed:71,zscore:0.2,motion:false,online:true,calibrated:true},
-      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?-3.2:0.5,motion:md,online:true,calibrated:true},
-      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?-2.8:0.1,motion:md,online:true,calibrated:true}
+      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?3.2:0.5,motion:md,online:true,calibrated:true},
+      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?2.8:0.1,motion:md,online:true,calibrated:true}
     },
     positions: {
       extender:{x:0,y:0,z:0,fixed:true},
@@ -911,23 +976,37 @@ function runSim(){
 }
 
 // ── INIT ──
-$('btnRotate').onclick=e=>{autoRotate=!autoRotate;e.target.classList.toggle('active',autoRotate);};
-$('btnView2D').onclick=e=>{
-  is2D=!is2D;
-  e.target.textContent=is2D?"3D VIEW":"2D VIEW";
-  e.target.classList.toggle('active',is2D);
-  if(is2D){
-    autoRotate=false; $('btnRotate').classList.remove('active');
-    camera.position.set(0,12,0.01);
-    camera.lookAt(0,0,0);
-  }else{
-    camera.position.set(8,5,8);
-    camera.lookAt(0,-1,0);
+function setView(v) {
+  currentView = v;
+  ['btn3D', 'btnTop', 'btnFloor'].forEach(id => $(id).classList.remove('active'));
+  $(`btn${v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()}`).classList.add('active');
+  
+  if (v === '3D') {
+      camera.position.set(8, 5, 8); camera.lookAt(0, -1, 0);
+      autoRotate = true; $('btnRotate').classList.add('active');
+  } else if (v === 'TOP') {
+      camera.position.set(0, 15, 0.01); camera.lookAt(0, 0, 0);
+      autoRotate = false; $('btnRotate').classList.remove('active');
+  } else if (v === 'FLOOR') {
+      camera.position.set(0, 1, 8); camera.lookAt(0, 0, 0);
+      autoRotate = false; $('btnRotate').classList.remove('active');
   }
+}
+
+$('btn3D').onclick=()=>setView('3D');
+$('btnTop').onclick=()=>setView('TOP');
+$('btnFloor').onclick=()=>setView('FLOOR');
+$('btnRotate').onclick=e=>{autoRotate=!autoRotate;e.target.classList.toggle('active',autoRotate);};
+
+$('btnSimOff').onclick=e=>{
+  simMode=!simMode; 
+  e.target.textContent=simMode?"SIM ON":"SIM OFF";
+  e.target.style.color = simMode ? 'var(--text)' : 'var(--watching)';
+  e.target.style.borderColor = simMode ? 'var(--border)' : 'rgba(217,119,6,0.3)';
+  e.target.classList.toggle('active',simMode);
 };
 
 $('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'&#128263;':'&#128266;';e.target.classList.toggle('active',muted);};
-$('simToggle').onchange=e=>{simMode=e.target.checked;$('simBadge').classList.toggle('active',simMode);};
 $('thrSlider').oninput=e=>{$('thrVal').textContent=e.target.value;if(!simMode)fetch('/set_threshold/'+e.target.value).catch(()=>{});};
 $('btnExport').onclick=()=>{
   let csv='Time,State,Source,Conf\n'+logEvents.map(e=>`${e.ts},${e.st},${e.src},${e.conf}`).join('\n');
@@ -935,9 +1014,7 @@ $('btnExport').onclick=()=>{
   a.download='events.csv';a.click();
 };
 
-$('drawerHandleArea').onclick=()=>{
-  $('bottomDrawer').classList.toggle('open');
-};
+$('drawerHandleArea').onclick=()=>$('bottomDrawer').classList.toggle('open');
 
 init3D();
 initWS();
