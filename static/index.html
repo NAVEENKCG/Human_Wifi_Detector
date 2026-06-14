@@ -3,25 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Wi-Fi RF Human Sensing Dashboard (Production v2)</title>
+<title>RuView Style WiFi Sensing Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#050810;
-  --surface:#0f1424;
-  --elevated:#151b2e;
-  --text:#e0e6f0;
-  --muted:#6b7a99;
-  --dim:#3a4660;
-  --border:rgba(255,255,255,0.06);
+  --bg:#050A18;
+  --surface:#0D1526;
+  --elevated:#152035;
+  --text:#FAFAF8;
+  --muted:#8b9bb4;
+  --dim:#4a5b7d;
+  --border:rgba(255,255,255,0.08);
   --glass:rgba(255,255,255,0.03);
   --glass-hover:rgba(255,255,255,0.07);
-  --glass-border:rgba(255,255,255,0.08);
+  --glass-border:rgba(255,255,255,0.12);
   --font:'JetBrains Mono',monospace;
-  --cal:#888;
   --idle:#38A169;
   --watching:#D97706;
   --activity:#E8912A;
@@ -36,10 +35,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
   min-height:100vh;overflow:hidden;line-height:1.5;display:flex;}
 
 /* ── Layout ── */
-#scene-col{width:55%;height:100vh;position:relative;}
-#panel-col{width:45%;height:100vh;overflow-y:auto;padding:24px;
-  display:flex;flex-direction:column;gap:16px;background:rgba(15,20,36,0.5);
-  border-left:1px solid var(--border); padding-bottom: 80px;} 
+#scene-col{width:60%;height:100vh;position:relative;}
+#panel-col{width:40%;height:100vh;overflow-y:auto;padding:24px;
+  display:flex;flex-direction:column;gap:16px;background:rgba(13,21,38,0.6);
+  border-left:1px solid var(--border); padding-bottom: 80px; backdrop-filter:blur(10px);} 
 
 @media(max-width:768px){
   body{flex-direction:column;overflow-y:auto;}
@@ -49,212 +48,152 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 
 /* ── 3D Scene HUD ── */
 #threeCanvas{width:100%;height:100%;display:block;}
-#hudOverlay{position:absolute;top:20px;left:20px;pointer-events:none;z-index:10;}
-.hud-title{font-size:0.7rem;letter-spacing:0.1em;color:var(--muted);margin-bottom:8px;
-  display:flex;align-items:center;gap:6px;}
-.blink-dot{width:6px;height:6px;background:var(--motion);border-radius:50%;
-  animation:blink 1s infinite;}
+#hudOverlay{position:absolute;top:24px;left:24px;pointer-events:none;z-index:10;}
+.logo-title{font-size:1.4rem;font-weight:800;letter-spacing:0.02em;margin-bottom:4px; display:flex; align-items:center; gap:8px;}
+.logo-icon{color:var(--idle); font-size:1.6rem;}
+.subtitle{font-size:0.6rem;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;}
+
+.hud-state-pill{display:inline-flex; align-items:center; gap:8px; padding:6px 14px; border-radius:20px; font-size:0.75rem; font-weight:700; letter-spacing:0.08em; margin-top:24px; background:rgba(0,0,0,0.6); border:1px solid var(--border); transition:0.3s; text-transform:uppercase;}
+.blink-dot{width:8px;height:8px;border-radius:50%; animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
-.hud-state-pill{display:inline-block; padding:4px 10px; border-radius:12px; font-size:1rem; font-weight:800; letter-spacing:0.04em; margin-bottom:4px;
-  background:rgba(0,0,0,0.5); border:1px solid var(--border); transition:0.3s;}
-.hud-conf{font-size:0.8rem;color:var(--text);font-weight:600; margin-top:4px;}
 
 /* ── View Controls ── */
-.view-controls{position:absolute; top:20px; right:20px; display:flex; gap:8px; z-index:10;}
-.btn-view{background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); padding:4px 10px; border-radius:6px; font-family:var(--font); font-size:0.6rem; cursor:pointer; transition:0.2s; backdrop-filter:blur(4px);}
+.view-controls{position:absolute; top:24px; right:24px; display:flex; gap:8px; z-index:10;}
+.btn-view{background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); padding:6px 12px; border-radius:6px; font-family:var(--font); font-size:0.65rem; cursor:pointer; transition:0.2s; backdrop-filter:blur(4px); letter-spacing:0.05em;}
 .btn-view:hover{background:rgba(255,255,255,0.1);}
 .btn-view.active{background:rgba(255,255,255,0.15); color:var(--text); border-color:var(--dim);}
 
 /* ── Coordinates HUD ── */
-.coords-hud{position:absolute; bottom:20px; left:20px; z-index:10; font-size:0.6rem; color:var(--text); background:rgba(10,13,26,0.8); padding:10px 12px; border-radius:8px; border:1px solid var(--border); backdrop-filter:blur(4px); pointer-events:none; min-width:180px;}
-.coords-hud .tt-title{color:var(--muted); margin-bottom:6px; border-bottom:1px solid rgba(255,255,255,0.1); padding-bottom:4px;}
-.coord-row{display:flex; justify-content:space-between; margin-bottom:2px;}
+.coords-hud{position:absolute; bottom:24px; left:24px; z-index:10; font-size:0.65rem; color:var(--text); background:rgba(10,13,26,0.8); padding:16px; border-radius:12px; border:1px solid var(--glass-border); backdrop-filter:blur(8px); pointer-events:none; min-width:200px; box-shadow:0 8px 32px rgba(0,0,0,0.4);}
+.coords-hud .tt-title{color:var(--muted); margin-bottom:12px; border-bottom:1px solid var(--border); padding-bottom:8px; font-weight:800; letter-spacing:0.1em;}
+.coord-row{display:flex; justify-content:space-between; margin-bottom:6px;}
 .coord-lbl{font-weight:700;}
-
-/* ── Calibration Overlay ── */
-.cal-overlay{position:absolute; inset:0; background:rgba(5,8,16,0.7); z-index:5; display:flex; flex-direction:column; align-items:center; justify-content:center; backdrop-filter:blur(2px); transition:opacity 0.5s;}
-.cal-spinner{width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--watching); border-radius:50%; animation:spin 1s linear infinite; margin-bottom:16px;}
-@keyframes spin{to{transform:rotate(360deg);}}
-.cal-text{font-size:0.8rem; color:var(--watching); font-weight:700; letter-spacing:0.1em;}
 
 /* ── Tooltip ── */
 #nodeTooltip{
-  position:absolute; display:none; background:rgba(15,20,36,0.9);
-  border:1px solid rgba(255,255,255,0.15); padding:10px; border-radius:8px;
+  position:absolute; display:none; background:rgba(15,20,36,0.95);
+  border:1px solid var(--glass-border); padding:12px; border-radius:8px;
   color:#fff; font-size:0.65rem; pointer-events:none; z-index:100;
-  transform:translate(-50%,-100%); margin-top:-15px; box-shadow:0 4px 12px rgba(0,0,0,0.5);
-  backdrop-filter:blur(4px); white-space:nowrap;
+  transform:translate(-50%,-100%); margin-top:-15px; box-shadow:0 8px 24px rgba(0,0,0,0.6);
+  backdrop-filter:blur(8px); white-space:nowrap;
 }
-.tt-title{font-weight:800;font-size:0.75rem;}
-.tt-row{display:flex;justify-content:space-between;gap:12px;margin-bottom:2px;}
-.tt-lbl{color:var(--muted);}
+.tt-title{font-weight:800;font-size:0.8rem; letter-spacing:0.05em;}
 
-/* ── State Panel ── */
-.panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
-  padding:16px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);}
-.state-panel{display:flex;flex-direction:column;gap:8px;}
-.sp-top{display:flex;justify-content:space-between;align-items:flex-end;}
-.sp-state{font-size:1.8rem;font-weight:800;letter-spacing:0.02em;line-height:1;}
-.sp-desc{font-size:0.65rem;color:var(--muted);margin-top:4px;}
-.sp-nodes-badge{font-size:0.6rem;padding:2px 8px;background:rgba(255,255,255,0.05);
-  border-radius:6px;color:var(--muted);border:1px solid var(--border);}
-.conf-track{position:relative;height:12px;background:rgba(255,255,255,0.04);
-  border-radius:6px;overflow:hidden;margin-top:8px;}
-.conf-fill{height:100%;border-radius:6px;transition:width 0.3s ease,background 0.3s;}
-.conf-fill.green{background:var(--idle);}
-.conf-fill.amber{background:var(--activity);}
-.conf-fill.red{background:var(--motion);}
-.conf-marks{position:absolute;inset:0;display:flex;pointer-events:none;}
-.conf-mark{width:33.33%;border-right:1px solid rgba(255,255,255,0.1);height:100%;}
-.conf-mark:last-child{border:none;}
+/* ── Panels ── */
+.panel{background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:20px;box-shadow:inset 0 1px 0 rgba(255,255,255,0.10), 0 8px 24px rgba(0,0,0,0.2);}
+  
+/* ── Vital Signs / Status ── */
+.status-grid{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+.metric-box{display:flex; flex-direction:column; gap:4px; padding-bottom:12px; border-bottom:1px solid var(--border);}
+.metric-lbl{font-size:0.6rem; color:var(--muted); letter-spacing:0.1em; display:flex; align-items:center; gap:6px;}
+.metric-val{font-size:1.8rem; font-weight:800; line-height:1;}
+.metric-val span{font-size:0.8rem; color:var(--muted); font-weight:500; margin-left:4px;}
+.conf-bar-wrap{height:4px; background:rgba(255,255,255,0.05); border-radius:2px; margin-top:8px; overflow:hidden;}
+.conf-bar{height:100%; background:var(--idle); transition:0.3s; width:0%;}
 
 /* ── Node Cards ── */
 .node-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;}
-.node-card{background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
-  padding:12px;position:relative;display:flex;flex-direction:column;gap:8px; transition:border-color 0.3s;}
+.node-card{background:rgba(255,255,255,0.02);border:1px solid var(--glass-border);border-radius:12px;
+  padding:14px;position:relative;display:flex;flex-direction:column;gap:8px; transition:0.3s;}
 .nc-header{display:flex;justify-content:space-between;align-items:center;}
-.nc-name{font-size:0.65rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;}
-.nc-status{font-size:0.55rem;font-weight:600;padding:2px 6px;border-radius:4px;
-  background:rgba(255,255,255,0.05);}
-.nc-status.on{color:var(--idle);}
-.nc-status.off{color:var(--cal);}
-.nc-status.cal{color:var(--watching);}
-.nc-metrics{display:flex;justify-content:space-between;align-items:baseline;}
-.nc-sig{font-size:1.4rem;font-weight:800;line-height:1;}
-.nc-sig small{font-size:0.6rem;color:var(--muted);font-weight:400;}
-.nc-z{font-size:0.6rem;font-weight:700;}
-.nc-dist{font-size:0.6rem;color:var(--text);font-weight:600;margin-top:2px;display:flex;justify-content:space-between;}
-.nc-dist span{color:var(--muted);font-weight:400;}
-.sparkline{width:100%;height:20px;margin-top:auto;}
+.nc-name{font-size:0.65rem;font-weight:800;text-transform:uppercase;letter-spacing:0.05em;}
+.nc-metrics{display:flex;justify-content:space-between;align-items:baseline;margin-top:4px;}
+.nc-sig{font-size:1.6rem;font-weight:800;line-height:1;}
+.nc-sig small{font-size:0.7rem;color:var(--muted);font-weight:500;}
+.nc-z{font-size:0.65rem;font-weight:700;}
+.nc-dist{font-size:0.6rem;color:var(--muted);margin-top:2px;display:flex;justify-content:space-between;}
+.nc-dist span{color:var(--text);font-weight:600;}
+.nc-spark-wrap{height:24px; position:relative; margin-top:8px; overflow:hidden;}
+.sparkline{position:absolute; inset:0; width:100%; height:100%;}
 
 /* ── Chart ── */
-.chart-panel{flex:1;min-height:160px;display:flex;flex-direction:column;}
-.chart-header{display:flex;gap:12px;margin-bottom:8px;}
-.chart-leg{font-size:0.6rem;color:var(--muted);display:flex;align-items:center;gap:4px;}
-.chart-leg span{width:8px;height:8px;border-radius:2px;}
+.chart-panel{flex:1;min-height:180px;display:flex;flex-direction:column;}
+.chart-header{display:flex;justify-content:space-between;margin-bottom:12px;}
+.chart-title{font-size:0.65rem; font-weight:700; color:var(--muted); letter-spacing:0.1em;}
 .chart-wrap{flex:1;position:relative;}
 
 /* ── Event Log ── */
-.log-panel{height:140px;display:flex;flex-direction:column;}
-.log-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
-.log-title{font-size:0.65rem;font-weight:700;color:var(--muted);letter-spacing:0.05em;}
-.btn-small{background:var(--glass);border:1px solid var(--border);color:var(--text);
-  font-family:var(--font);font-size:0.55rem;padding:2px 6px;border-radius:4px;cursor:pointer;}
-.btn-small:hover{background:var(--glass-hover);}
-.log-list{flex:1;overflow-y:auto;font-size:0.6rem;}
+.log-panel{height:160px;display:flex;flex-direction:column;}
+.btn-small{background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);
+  font-family:var(--font);font-size:0.6rem;padding:4px 10px;border-radius:6px;cursor:pointer;transition:0.2s;}
+.btn-small:hover{background:rgba(255,255,255,0.1);}
+.log-list{flex:1;overflow-y:auto;font-size:0.65rem;margin-top:8px;}
 .log-list::-webkit-scrollbar{width:4px;}
 .log-list::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
-.log-entry{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--border);
+.log-entry{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);
   color:var(--dim);font-family:var(--font);}
 .log-entry.motion{color:var(--text);}
 .le-time{color:var(--muted);}
-.le-state{font-weight:700;width:50px;}
-.le-state.ACT{color:var(--activity);}
-.le-state.MOT{color:var(--motion);}
-.le-state.CON{color:var(--confirmed);}
+.le-state{font-weight:800;width:50px;}
 
 /* ── Controls ── */
 .controls-bar{display:flex;align-items:center;justify-content:space-between;
-  background:var(--glass);border:1px solid var(--glass-border);border-radius:12px;
-  padding:10px 16px;margin-top:auto;}
-.ctrl-group{display:flex;align-items:center;gap:12px;}
-.ctrl-lbl{font-size:0.6rem;color:var(--muted);display:flex;align-items:center;gap:4px;cursor:pointer;}
-.ctrl-lbl input[type=range]{width:60px;accent-color:var(--idle);}
-.ctrl-lbl input[type=checkbox]{accent-color:var(--watching);}
-.sim-badge{color:var(--watching);font-weight:700;font-size:0.6rem;display:none;}
-.sim-badge.active{display:inline;}
-.mute-btn{background:transparent;border:none;color:var(--muted);cursor:pointer;font-size:0.9rem;}
-.mute-btn.active{color:var(--motion);}
-.btn-toggle{background:var(--glass);border:1px solid var(--border);color:var(--muted);
-  padding:4px 8px;border-radius:6px;font-family:var(--font);font-size:0.6rem;cursor:pointer; transition:0.2s;}
-.btn-toggle.active{background:rgba(255,255,255,0.15);color:var(--text); border-color:rgba(255,255,255,0.2);}
+  background:var(--glass);border:1px solid var(--glass-border);border-radius:16px;
+  padding:12px 20px;margin-top:auto;}
+.ctrl-group{display:flex;align-items:center;gap:16px;}
+.ctrl-lbl{font-size:0.65rem;color:var(--text);display:flex;align-items:center;gap:8px;cursor:pointer; font-weight:600;}
+.ctrl-lbl input[type=range]{width:80px;accent-color:var(--idle);}
+.btn-toggle{background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--muted);
+  padding:6px 12px;border-radius:8px;font-family:var(--font);font-size:0.65rem;cursor:pointer; transition:0.2s; font-weight:700;}
+.btn-toggle.active{background:var(--idle);color:#000; border-color:var(--idle);}
 
-/* ── Bottom Drawer (Stats) ── */
-.bottom-drawer{
-  position:fixed; bottom:0; left:0; width:100%;
-  background:rgba(10,13,26,0.95); backdrop-filter:blur(10px);
-  border-top:1px solid var(--glass-border);
-  transform:translateY(calc(100% - 30px)); transition:transform 0.4s cubic-bezier(0.16,1,0.3,1);
-  z-index:60; display:flex; flex-direction:column; align-items:center;
-}
-.bottom-drawer.open{transform:translateY(0);}
-.drawer-handle-area{width:100%; height:30px; display:flex; justify-content:center; align-items:center; cursor:pointer;}
-.drawer-handle{width:40px; height:4px; background:var(--muted); border-radius:2px; opacity:0.5;}
-.drawer-handle-area:hover .drawer-handle{opacity:1;}
-.drawer-content{width:100%; padding:0 24px 24px 24px; max-width:800px;}
-.drawer-title{font-size:0.65rem; font-weight:700; color:var(--muted); letter-spacing:0.1em; margin-bottom:12px;}
-.stats-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:16px;}
-@media(max-width:600px){ .stats-grid{grid-template-columns:repeat(2,1fr);} }
-.stat-box{background:rgba(255,255,255,0.02); border:1px solid var(--border); border-radius:8px; padding:12px; text-align:center;}
-.stat-val{font-size:1.4rem; font-weight:800; color:var(--text); line-height:1.2;}
-.stat-val.highlight{color:var(--motion);}
-.stat-lbl{font-size:0.55rem; color:var(--muted); letter-spacing:0.05em; margin-top:4px;}
-
-.offline-banner{position:fixed;top:10px;left:50%;transform:translateX(-50%);
-  background:rgba(229,62,62,0.15);border:1px solid rgba(229,62,62,0.3);
-  color:var(--motion);padding:6px 18px;border-radius:10px;font-size:0.7rem;
-  font-weight:600;z-index:50;display:none;backdrop-filter:blur(12px);}
-.offline-banner.visible{display:block;}
-
-.ws-indicator{position:absolute; bottom:20px; right:20px; font-size:0.6rem; padding:4px 8px; border-radius:4px; background:rgba(0,0,0,0.5); border:1px solid var(--border); color:var(--muted); z-index:10;}
-.ws-indicator.active{color:var(--idle); border-color:rgba(56,161,105,0.3);}
+.offline-banner{position:fixed;top:16px;left:50%;transform:translateX(-50%);
+  background:rgba(229,62,62,0.2);border:1px solid rgba(229,62,62,0.4);
+  color:#ff8888;padding:8px 24px;border-radius:12px;font-size:0.75rem;
+  font-weight:700;z-index:50;display:none;backdrop-filter:blur(12px); box-shadow:0 8px 32px rgba(229,62,62,0.3);}
+.offline-banner.visible{display:flex; align-items:center; gap:8px;}
 </style>
 </head>
 <body>
 
-<div class="offline-banner" id="offlineBanner">SERVER UNREACHABLE</div>
+<div class="offline-banner" id="offlineBanner">⚠ SERVER UNREACHABLE</div>
 <div id="nodeTooltip"></div>
 
 <!-- LEFT COLUMN: 3D SCENE -->
 <div id="scene-col">
-  <div class="ws-indicator" id="wsIndicator">WS: OFF</div>
-  
-  <div class="cal-overlay" id="calOverlay">
-    <div class="cal-spinner"></div>
-    <div class="cal-text">ESTABLISHING BASELINE...</div>
-  </div>
-
   <div class="view-controls">
-    <button class="btn-view active" id="btn3D">3D</button>
-    <button class="btn-view" id="btnTop">TOP</button>
-    <button class="btn-view" id="btnFloor">FLOOR</button>
-    <button class="btn-view" style="color:var(--watching);border-color:rgba(217,119,6,0.3);" id="btnSimOff">SIM OFF</button>
+    <button class="btn-view active" id="btn3D">3D ORBIT</button>
+    <button class="btn-view" id="btnTop">TOP PLAN</button>
+    <button class="btn-view" id="btnSimOff" style="color:var(--watching);border-color:rgba(217,119,6,0.3);">SIM OFF</button>
   </div>
 
   <div class="coords-hud">
-    <div class="tt-title">COORDINATES (m)</div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--extender)">EXT</span> <span id="c-extender">0.00, 0.00, 0.00</span></div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--laptop)">LAP</span> <span id="c-laptop">--, --, --</span></div>
-    <div class="coord-row"><span class="coord-lbl" style="color:var(--phone)">PHN</span> <span id="c-phone">--, --, --</span></div>
-    <div class="coord-row"><span class="coord-lbl" style="color:#534AB7">RTR</span> <span id="c-router">0.00, -4.00, 0.00</span></div>
+    <div class="tt-title">NODE LOCATIONS (m)</div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--extender)">EXTENDER</span> <span id="c-extender">0.00, 0.00, 0.00</span></div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--laptop)">LAPTOP</span> <span id="c-laptop">--, --, --</span></div>
+    <div class="coord-row"><span class="coord-lbl" style="color:var(--phone)">PHONE</span> <span id="c-phone">--, --, --</span></div>
   </div>
 
   <canvas id="threeCanvas"></canvas>
   
   <div id="hudOverlay">
-    <div class="hud-title"><div class="blink-dot"></div> RF VISION ACTIVE</div>
-    <div class="hud-state-pill" id="hudStatePill">CALIBRATING</div>
-    <div class="hud-conf" id="hudConf">CONFIDENCE: 0%</div>
+    <div class="logo-title"><span class="logo-icon">π</span> RuView</div>
+    <div class="subtitle">WIFI DENSEPOSE SENSING OBSERVATORY</div>
+    
+    <div class="hud-state-pill" id="hudStatePill" style="color:var(--idle); border-color:var(--idle);">
+      <div class="blink-dot" id="hudDot" style="background:var(--idle)"></div>
+      <span id="hudStateTxt">IDLE</span>
+    </div>
   </div>
 </div>
 
 <!-- RIGHT COLUMN: PANELS -->
 <div id="panel-col">
   
-  <!-- STATE -->
-  <div class="panel state-panel">
-    <div class="sp-top">
-      <div>
-        <div class="sp-state" id="spState">CALIBRATING</div>
-        <div class="sp-desc" id="spDesc">Learning baseline signal...</div>
+  <!-- VITAL SIGNS -->
+  <div class="panel">
+    <div class="chart-title" style="margin-bottom:16px;">PRESENCE METRICS</div>
+    <div class="status-grid">
+      <div class="metric-box">
+        <div class="metric-lbl">♥ RESPIRATION / MOTION</div>
+        <div class="metric-val" id="metric-mot">0.00<span>VAR</span></div>
       </div>
-      <div class="sp-nodes-badge" id="spNodes">0 ACTIVE NODES</div>
-    </div>
-    <div class="conf-track">
-      <div class="conf-marks">
-        <div class="conf-mark"></div><div class="conf-mark"></div><div class="conf-mark"></div>
+      <div class="metric-box">
+        <div class="metric-lbl">⚖ CONFIDENCE</div>
+        <div class="metric-val" id="metric-conf">0<span>%</span></div>
+        <div class="conf-bar-wrap"><div class="conf-bar" id="confBar"></div></div>
       </div>
-      <div class="conf-fill green" id="spConfFill" style="width:0%"></div>
     </div>
   </div>
 
@@ -263,47 +202,42 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
     <div class="node-card" id="card-laptop" style="border-top:2px solid var(--laptop)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--laptop)">Laptop</span>
-        <span class="nc-status cal" id="ns-laptop">CAL</span>
       </div>
       <div class="nc-metrics">
-        <span class="nc-sig" id="sig-laptop">--<small>%</small></span>
-        <span class="nc-z" id="z-laptop">z: --</span>
+        <span class="nc-sig" id="sig-laptop">--<small>dBm</small></span>
+        <span class="nc-z" id="z-laptop">v: --</span>
       </div>
       <div class="nc-dist">Dist: <span id="dist-laptop">-- m</span></div>
-      <canvas class="sparkline" id="spark-laptop"></canvas>
+      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-laptop"></canvas></div>
     </div>
     <div class="node-card" id="card-phone" style="border-top:2px solid var(--phone)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--phone)">Phone</span>
-        <span class="nc-status cal" id="ns-phone">CAL</span>
       </div>
       <div class="nc-metrics">
-        <span class="nc-sig" id="sig-phone">--<small>%</small></span>
-        <span class="nc-z" id="z-phone">z: --</span>
+        <span class="nc-sig" id="sig-phone">--<small>dBm</small></span>
+        <span class="nc-z" id="z-phone">v: --</span>
       </div>
       <div class="nc-dist">Dist: <span id="dist-phone">-- m</span></div>
-      <canvas class="sparkline" id="spark-phone"></canvas>
+      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-phone"></canvas></div>
     </div>
     <div class="node-card" id="card-extender" style="border-top:2px solid var(--extender)">
       <div class="nc-header">
         <span class="nc-name" style="color:var(--extender)">Extender</span>
-        <span class="nc-status cal" id="ns-extender">CAL</span>
       </div>
       <div class="nc-metrics">
-        <span class="nc-sig" id="sig-extender">--<small>%</small></span>
-        <span class="nc-z" id="z-extender">z: --</span>
+        <span class="nc-sig" id="sig-extender">--<small>dBm</small></span>
+        <span class="nc-z" id="z-extender">v: --</span>
       </div>
       <div class="nc-dist">Origin <span id="dist-extender">0.0 m</span></div>
-      <canvas class="sparkline" id="spark-extender"></canvas>
+      <div class="nc-spark-wrap"><canvas class="sparkline" id="spark-extender"></canvas></div>
     </div>
   </div>
 
   <!-- CHART -->
   <div class="panel chart-panel">
     <div class="chart-header">
-      <div class="chart-leg"><span style="background:var(--laptop)"></span> Laptop</div>
-      <div class="chart-leg"><span style="background:var(--phone)"></span> Phone</div>
-      <div class="chart-leg"><span style="background:var(--extender)"></span> Extender</div>
+      <div class="chart-title">WIFI SIGNAL TRACE</div>
     </div>
     <div class="chart-wrap">
       <canvas id="mainChart"></canvas>
@@ -312,8 +246,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
 
   <!-- LOG -->
   <div class="panel log-panel">
-    <div class="log-header">
-      <div class="log-title">EVENT LOG</div>
+    <div class="chart-header">
+      <div class="chart-title">EVENT LOG</div>
       <button class="btn-small" id="btnExport">EXPORT CSV</button>
     </div>
     <div class="log-list" id="logList"></div>
@@ -322,59 +256,22 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);
   <!-- CONTROLS -->
   <div class="controls-bar">
     <div class="ctrl-group">
-      <label class="ctrl-lbl">THR <span id="thrVal">2.0</span>
+      <label class="ctrl-lbl">THRESHOLD <span id="thrVal" style="color:var(--idle)">2.0</span>
         <input type="range" id="thrSlider" min="1.0" max="4.0" step="0.1" value="2.0">
       </label>
-      <button class="btn-toggle active" id="btnRotate">ROTATE</button>
     </div>
     <div class="ctrl-group">
-      <button class="mute-btn" id="btnMute">&#128266;</button>
+      <button class="btn-toggle" id="btnMute">SOUND ON</button>
     </div>
   </div>
 
-</div>
-
-<!-- BOTTOM DRAWER -->
-<div class="bottom-drawer" id="bottomDrawer">
-  <div class="drawer-handle-area" id="drawerHandleArea">
-    <div class="drawer-handle"></div>
-  </div>
-  <div class="drawer-content">
-    <div class="drawer-title">SESSION STATISTICS</div>
-    <div class="stats-grid">
-      <div class="stat-box">
-        <div class="stat-val highlight" id="stat-total">0</div>
-        <div class="stat-lbl">MOTION EVENTS</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="stat-eph">0.0</div>
-        <div class="stat-lbl">EVENTS / HR</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="stat-active" style="color:var(--laptop)">--</div>
-        <div class="stat-lbl">MOST ACTIVE</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-val" id="stat-avg-conf">0%</div>
-        <div class="stat-lbl">AVG CONFIDENCE</div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <script>
 const $=id=>document.getElementById(id);
 const KEYS = ['laptop','phone','extender'];
-const COLS = {laptop:0x378ADD, phone:0xBA7517, extender:0x1D9E75, router:0x534AB7};
+const COLS = {laptop:0x378ADD, phone:0xBA7517, extender:0x1D9E75};
 const SCOLS = {CALIBRATING:'#888',IDLE:'#38A169',WATCHING:'#D97706',ACTIVITY:'#E8912A',MOTION:'#E53E3E',CONFIRMED:'#ff2020'};
-const SDESC = {
-  CALIBRATING:"Learning baseline signal...",
-  IDLE:"No movement detected. All clear.",
-  WATCHING:"Signal fluctuation noticed.",
-  ACTIVITY:"Activity detected on one sensor.",
-  MOTION:"Motion confirmed on multiple sensors.",
-  CONFIRMED:"Strong motion -- all sensors agree."
-};
 
 let sysState={state:'CALIBRATING',conf:0,nodes:{},pos:{}};
 let history={laptop:[],phone:[],extender:[]};
@@ -382,14 +279,8 @@ let sparkH={laptop:[],phone:[],extender:[]};
 let logEvents=[];
 let muted=false, simMode=false, autoRotate=true, currentView='3D';
 let failStrikes=0;
-let wsConnected=false;
-let allNodesCalibrated=false;
 
-let sessStart = Date.now();
-let sessEvents = 0;
-let sessConfSum = 0;
-let nodeTriggers = {laptop:0, phone:0, extender:0};
-
+// Audio
 let actx=null;
 function beep(f,d=80){
   if(muted)return;
@@ -401,19 +292,19 @@ function beep(f,d=80){
     o.stop(actx.currentTime+d/1000+0.05)}catch(e){}
 }
 
-// ── 3D SCENE ──
+// ── 3D SCENE (RUVIEW AESTHETIC) ──
 let scene,camera,renderer,clock;
-let spheres={}, ringsPool=[], links={}, personZone, personLabel;
+let spheres={}, ringsPool=[], humanGroup;
 let isDragging=false, dragTimer=0;
 const raycaster = new THREE.Raycaster();
 const mouse = new THREE.Vector2();
 
-function createTextSprite(msg, color){
+function createTextSprite(msg, color, size=24){
   const canvas=document.createElement('canvas');
   canvas.width=256;canvas.height=64;
   const ctx=canvas.getContext('2d');
   ctx.fillStyle=color;
-  ctx.font='bold 24px "JetBrains Mono", monospace';
+  ctx.font=`bold ${size}px "JetBrains Mono", monospace`;
   ctx.textAlign='center';
   ctx.fillText(msg,128,40);
   const tex=new THREE.CanvasTexture(canvas);
@@ -426,11 +317,11 @@ function createTextSprite(msg, color){
 function init3D(){
   const container=$('scene-col');
   scene=new THREE.Scene();
-  scene.background=new THREE.Color(0x050810);
+  scene.background=new THREE.Color(0x050A18); // Dark space
   
-  camera=new THREE.PerspectiveCamera(50,container.clientWidth/container.clientHeight,0.1,100);
-  camera.position.set(8,5,8);
-  camera.lookAt(0,-1,0);
+  camera=new THREE.PerspectiveCamera(45,container.clientWidth/container.clientHeight,0.1,100);
+  camera.position.set(0, 8, 14);
+  camera.lookAt(0,0,0);
 
   renderer=new THREE.WebGLRenderer({canvas:$('threeCanvas'),antialias:true});
   renderer.setSize(container.clientWidth,container.clientHeight);
@@ -438,81 +329,72 @@ function init3D(){
 
   clock=new THREE.Clock();
 
-  scene.add(new THREE.AmbientLight(0x1a2a4a,1.5));
-  const pl=new THREE.PointLight(0xffffff,0.5);
-  pl.position.set(0,10,0);
-  scene.add(pl);
-
-  // Axes
-  const axes = new THREE.AxesHelper(2);
-  scene.add(axes);
-  const lx=createTextSprite("X →","#ff4444"); lx.position.set(2.5,0,0); lx.scale.set(2,0.5,1); scene.add(lx);
-  const ly=createTextSprite("Y ↑","#44ff44"); ly.position.set(0,2.5,0); ly.scale.set(2,0.5,1); scene.add(ly);
-  const lz=createTextSprite("Z →","#4444ff"); lz.position.set(0,0,2.5); lz.scale.set(2,0.5,1); scene.add(lz);
-
-  // Floors
-  const gGeo=new THREE.PlaneGeometry(20,20);
-  const gMat=new THREE.MeshBasicMaterial({color:0x333333,transparent:true,opacity:0.3,side:THREE.DoubleSide});
-  const gFloor=new THREE.Mesh(gGeo,gMat);
-  gFloor.rotation.x=Math.PI/2;
-  gFloor.position.y=-4;
-  scene.add(gFloor);
-  const gL=createTextSprite("GROUND FLOOR","#888888");
-  gL.position.set(0,-3.8,-4);
-  scene.add(gL);
-
-  const fMat=new THREE.MeshBasicMaterial({color:0x1a3a6a,transparent:true,opacity:0.25,side:THREE.DoubleSide});
-  const fFloor=new THREE.Mesh(gGeo,fMat);
-  fFloor.rotation.x=Math.PI/2;
-  fFloor.position.y=0;
-  scene.add(fFloor);
-  const fL=createTextSprite("1ST FLOOR","#88aaee");
-  fL.position.set(0,0.2,-4);
-  scene.add(fL);
+  // Floor Grid (Green matrix dots)
+  const count = 21;
+  const gap = 1.0;
+  const gridGeo = new THREE.PlaneGeometry(0.3, 0.3);
+  gridGeo.rotateX(-Math.PI / 2);
+  const gridMat = new THREE.MeshBasicMaterial({color: 0x1D9E75, transparent: true, opacity: 0.15});
+  const floorGrid = new THREE.InstancedMesh(gridGeo, gridMat, count * count);
+  const dummy = new THREE.Object3D();
+  let idx = 0;
+  for(let x = -10; x <= 10; x++) {
+    for(let z = -10; z <= 10; z++) {
+      dummy.position.set(x * gap, 0, z * gap);
+      dummy.updateMatrix();
+      floorGrid.setMatrixAt(idx++, dummy.matrix);
+    }
+  }
+  scene.add(floorGrid);
 
   // Nodes
-  spheres.extender = makeNode(0x1D9E75, 0.25, "EXTENDER", true, 'extender');
-  spheres.router   = makeNode(0x534AB7, 0.25, "ROUTER", false, 'router');
-  spheres.laptop   = makeNode(0x378ADD, 0.22, "LAPTOP", false, 'laptop');
-  spheres.phone    = makeNode(0xBA7517, 0.20, "PHONE", false, 'phone');
+  spheres.extender = makeNode(0x1D9E75, 0.2, "EXT", 'extender');
+  spheres.laptop   = makeNode(0x378ADD, 0.2, "LAP", 'laptop');
+  spheres.phone    = makeNode(0xBA7517, 0.2, "PHN", 'phone');
 
-  // Router line
-  const rlGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-4,0),new THREE.Vector3(0,0,0)]);
-  const rlMat=new THREE.LineDashedMaterial({color:0x534AB7,dashSize:0.2,gapSize:0.1});
-  const rLine=new THREE.Line(rlGeo,rlMat);
-  rLine.computeLineDistances();
-  scene.add(rLine);
+  // Human DensePose Silhouette
+  humanGroup = new THREE.Group();
+  
+  // Body capsule
+  const bodyGeo = new THREE.CapsuleGeometry(0.35, 1.0, 4, 16);
+  const bodyMat = new THREE.MeshBasicMaterial({color: 0x38A169, transparent: true, opacity: 0});
+  const bodyMesh = new THREE.Mesh(bodyGeo, bodyMat);
+  bodyMesh.position.y = 0.85; 
+  humanGroup.add(bodyMesh);
+  
+  // Joints
+  const jointGeo = new THREE.SphereGeometry(0.08, 8, 8);
+  const jointMat = new THREE.MeshBasicMaterial({color: 0xff4444, transparent:true, opacity:0});
+  const jointPositions = [
+    [0, 1.6, 0], // head
+    [-0.4, 1.2, 0], [0.4, 1.2, 0], // shoulders
+    [-0.45, 0.7, 0], [0.45, 0.7, 0], // elbows
+    [-0.2, 0.3, 0], [0.2, 0.3, 0]  // knees
+  ];
+  const joints = [];
+  jointPositions.forEach(p => {
+    const j = new THREE.Mesh(jointGeo, jointMat);
+    j.position.set(...p);
+    humanGroup.add(j);
+    joints.push(j);
+  });
+  
+  // Base highlight
+  const baseGeo = new THREE.PlaneGeometry(1.5, 1.5);
+  baseGeo.rotateX(-Math.PI/2);
+  const baseMat = new THREE.MeshBasicMaterial({color: 0x38A169, transparent:true, opacity:0, side:THREE.DoubleSide});
+  const baseMesh = new THREE.Mesh(baseGeo, baseMat);
+  baseMesh.position.y = 0.01;
+  humanGroup.add(baseMesh);
 
-  // Link lines
-  links.ext_lap = makeLink();
-  links.ext_phn = makeLink();
+  humanGroup.userData = { bodyMat, jointMat, baseMat, joints };
+  scene.add(humanGroup);
 
-  // Dist rings
-  spheres.laptop.dRing=makeDistRing(0x378ADD);
-  spheres.phone.dRing=makeDistRing(0xBA7517);
-
-  // Person Zone
-  personZone=new THREE.Group();
-  const pzGeo=new THREE.IcosahedronGeometry(1,2);
-  const pzMat=new THREE.MeshBasicMaterial({color:0xff0000,transparent:true,opacity:0});
-  const pzWireMat=new THREE.MeshBasicMaterial({color:0xff4444,transparent:true,opacity:0,wireframe:true});
-  const pzMesh=new THREE.Mesh(pzGeo,pzMat);
-  const pzWire=new THREE.Mesh(pzGeo,pzWireMat);
-  personZone.add(pzMesh);
-  personZone.add(pzWire);
-  scene.add(personZone);
-  personZone.userData = {mesh:pzMesh, wire:pzWire};
-
-  personLabel=createTextSprite("PERSON?","#ff4444");
-  personLabel.visible=false;
-  scene.add(personLabel);
-
-  // Rings pool (24)
-  for(let i=0;i<24;i++){
-    const rg=new THREE.TorusGeometry(1,0.02,4,32);
-    const rm=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:0});
+  // Wireframe Dome Rings (RuView style)
+  for(let i=0;i<15;i++){
+    const rg=new THREE.SphereGeometry(1, 16, 16);
+    const rm=new THREE.MeshBasicMaterial({color:0x378ADD, wireframe:true, transparent:true, opacity:0});
     const r=new THREE.Mesh(rg,rm);
-    r.rotation.x=Math.PI/2;
     r.userData={active:false,t:0};
     scene.add(r);
     ringsPool.push(r);
@@ -525,45 +407,7 @@ function init3D(){
   renderer.domElement.addEventListener('pointermove',(e)=>{
     if(isDown && currentView==='3D'){
       camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),-e.movementX*0.01);
-      camera.position.y+=e.movementY*0.02;
-      camera.lookAt(0,-1,0);
-    }
-    
-    // Tooltip Raycast
-    const rect = renderer.domElement.getBoundingClientRect();
-    mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-    raycaster.setFromCamera(mouse, camera);
-    
-    const interactables = [spheres.extender.userData.mesh, spheres.laptop.userData.mesh, spheres.phone.userData.mesh, spheres.router.userData.mesh];
-    const intersects = raycaster.intersectObjects(interactables);
-    
-    const tt = $('nodeTooltip');
-    if(intersects.length > 0){
-      document.body.style.cursor='pointer';
-      const key = intersects[0].object.parent.userData.key;
-      const n = sysState.nodes[key] || {};
-      const p = sysState.pos[key] || {};
-      
-      let html = `<div class="tt-title" style="color:#${COLS[key].toString(16)}">${key.toUpperCase()}</div>`;
-      if(key !== 'router'){
-        html += `
-          <div class="tt-row"><span class="tt-lbl">Signal:</span> <span>${n.signal||0}%</span></div>
-          <div class="tt-row"><span class="tt-lbl">Z-Score:</span> <span>${(n.zscore||0).toFixed(2)}</span></div>
-          <div class="tt-row"><span class="tt-lbl">Distance:</span> <span>${p.distance_from_extender ? p.distance_from_extender.toFixed(2)+'m' : (p.fixed?'0.00m':'--')}</span></div>
-          <div class="tt-row"><span class="tt-lbl">Status:</span> <span>${n.online?(n.calibrated?'ONLINE':'CALIBRATING'):'OFFLINE'}</span></div>
-          <div class="tt-row"><span class="tt-lbl">Last seen:</span> <span>${n.online?'Just now':'>5s ago'}</span></div>
-        `;
-      } else {
-        html += `<div class="tt-row"><span class="tt-lbl">Type:</span> <span>Fixed Anchor</span></div>`;
-      }
-      tt.innerHTML = html;
-      tt.style.display = 'block';
-      tt.style.left = e.clientX + 'px';
-      tt.style.top = e.clientY + 'px';
-    } else {
-      document.body.style.cursor='default';
-      tt.style.display = 'none';
+      camera.lookAt(0,0,0);
     }
   });
 
@@ -574,68 +418,27 @@ function init3D(){
   });
 
   requestAnimationFrame(render3D);
-  setInterval(emitRings, 2000);
+  setInterval(emitRings, 1500);
 }
 
-function makeNode(color, r, labelText, hasTorus, key){
+function makeNode(color, r, labelText, key){
   const g=new THREE.Group();
   g.userData.key = key;
   
-  const geo=new THREE.SphereGeometry(r,16,16);
+  const geo=new THREE.BoxGeometry(r*2, r*0.5, r*2);
   const mat=new THREE.MeshBasicMaterial({color:color});
   const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.y = r*0.25;
   g.add(mesh);
   
-  const light=new THREE.PointLight(color,0,5);
-  g.add(light);
-  
-  if(hasTorus){
-    const tg=new THREE.TorusGeometry(r*1.5,0.02,8,32);
-    const tm=new THREE.MeshBasicMaterial({color:color,wireframe:true});
-    const tMesh=new THREE.Mesh(tg,tm);
-    tMesh.rotation.x=Math.PI/2;
-    g.add(tMesh);
-    g.userData.torus=tMesh;
-  }
-  
-  const lbl=createTextSprite(labelText, '#ffffff');
-  lbl.position.y=r+0.3;
+  const lbl=createTextSprite(labelText, '#ffffff', 20);
+  lbl.position.y=r*1.5;
   g.add(lbl);
   g.userData.lbl = lbl;
 
-  // Drop line and shadow
-  const dlGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
-  const dlMat=new THREE.LineDashedMaterial({color:0x888888,dashSize:0.1,gapSize:0.1});
-  const dl=new THREE.Line(dlGeo,dlMat);
-  scene.add(dl);
-  
-  const sdGeo=new THREE.CircleGeometry(0.12,16);
-  const sdMat=new THREE.MeshBasicMaterial({color:0x000000,transparent:true,opacity:0.4});
-  const sd=new THREE.Mesh(sdGeo,sdMat);
-  sd.rotation.x=-Math.PI/2;
-  scene.add(sd);
-
-  g.userData={...g.userData, mesh,mat,light,color,r,baseR:r,targetPos:new THREE.Vector3(), dropLine:dl, shadow:sd};
+  g.userData={...g.userData, mesh,mat,color,targetPos:new THREE.Vector3()};
   scene.add(g);
   return g;
-}
-
-function makeLink(){
-  const geo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(),new THREE.Vector3()]);
-  const mat=new THREE.LineBasicMaterial({color:0xffffff,transparent:true,opacity:0.2});
-  const line=new THREE.Line(geo,mat);
-  scene.add(line);
-  return line;
-}
-
-function makeDistRing(color){
-  const geo=new THREE.RingGeometry(0.95,1.05,64);
-  const mat=new THREE.MeshBasicMaterial({color:color,transparent:true,opacity:0.15,side:THREE.DoubleSide});
-  const mesh=new THREE.Mesh(geo,mat);
-  mesh.rotation.x=Math.PI/2;
-  mesh.position.y=0.01;
-  scene.add(mesh);
-  return mesh;
 }
 
 function emitRings(){
@@ -644,7 +447,7 @@ function emitRings(){
   KEYS.forEach(k=>{
     if(n[k]&&n[k].online){
       spawnRing(k,n[k].motion);
-      if(n[k].motion) setTimeout(()=>spawnRing(k,true),1000);
+      if(n[k].motion) setTimeout(()=>spawnRing(k,true),750);
     }
   });
 }
@@ -668,122 +471,79 @@ function render3D(){
   // Auto rotate
   if(!isDragging && autoRotate && currentView==='3D'){
     camera.position.applyAxisAngle(new THREE.Vector3(0,1,0),0.002);
-    camera.lookAt(0,-1,0);
+    camera.lookAt(0,0,0);
   }
   if(dragTimer>0){dragTimer-=dt; if(dragTimer<=0)isDragging=false;}
-
-  if(spheres.extender.userData.torus) spheres.extender.userData.torus.rotation.z-=0.5*dt;
 
   const n=sysState.nodes||{};
   const pos=sysState.pos||{};
 
   // Update nodes
-  ['extender','router','laptop','phone'].forEach(k=>{
+  ['extender','laptop','phone'].forEach(k=>{
     const s=spheres[k];
     if(pos[k]){
-      s.userData.targetPos.set(pos[k].x,pos[k].y,pos[k].z);
+      s.userData.targetPos.set(pos[k].x, 0, pos[k].z); // Force y=0 on 1st floor
       s.position.lerp(s.userData.targetPos, 0.05);
-      // Update coords HUD
-      const cstr = `${pos[k].x.toFixed(2)}, ${pos[k].y.toFixed(2)}, ${pos[k].z.toFixed(2)}`;
+      const cstr = `${pos[k].x.toFixed(2)}, 0.00, ${pos[k].z.toFixed(2)}`;
       if($(`c-${k}`)) $(`c-${k}`).textContent = cstr;
     }
     
-    // Labels orient
     if(s.userData.lbl){
-      s.userData.lbl.position.y = currentView==='TOP' ? 0 : (s.userData.r + 0.3);
-      s.userData.lbl.position.z = currentView==='TOP' ? -0.5 : 0;
-    }
-    
-    // Drop lines & shadows
-    if(s.userData.dropLine){
-      const fy = (k==='router')?-4:0;
-      const pts = s.userData.dropLine.geometry.attributes.position.array;
-      pts[0]=s.position.x; pts[1]=s.position.y; pts[2]=s.position.z;
-      pts[3]=s.position.x; pts[4]=fy; pts[5]=s.position.z;
-      s.userData.dropLine.geometry.attributes.position.needsUpdate=true;
-      s.userData.dropLine.computeLineDistances();
-      s.userData.shadow.position.set(s.position.x, fy+0.01, s.position.z);
+      s.userData.lbl.position.y = currentView==='TOP' ? 0.5 : 0.6;
     }
     
     if(k==='laptop'||k==='phone'){
       const nd=n[k]||{};
       if(!nd.online){
         s.userData.mat.color.setHex(0x555555);
-        s.userData.mesh.scale.setScalar(0.5);
-        s.userData.light.intensity=0;
       }else if(!nd.calibrated){
         s.userData.mat.wireframe=true;
         s.userData.mat.color.setHex(COLS[k]);
       }else{
         s.userData.mat.wireframe=false;
-        s.userData.mat.color.setHex(COLS[k]);
-        if(nd.motion){
-          const scale=1+Math.sin(t*10)*0.2;
-          s.userData.mesh.scale.setScalar(scale);
-          s.userData.light.intensity=1;
-        }else{
-          s.userData.mesh.scale.setScalar(1);
-          s.userData.light.intensity=0;
-        }
-      }
-      if(s.dRing && pos[k]){
-        const d=pos[k].distance_from_extender||0;
-        s.dRing.scale.setScalar(d||0.001);
+        s.userData.mat.color.setHex(nd.motion ? 0xff4444 : COLS[k]);
       }
     }
   });
 
-  if(pos.laptop) updateLink(links.ext_lap, spheres.extender.position, spheres.laptop.position, n.extender, n.laptop);
-  if(pos.phone) updateLink(links.ext_phn, spheres.extender.position, spheres.phone.position, n.extender, n.phone);
-
+  // Domes
   ringsPool.forEach(r=>{
     if(r.userData.active){
-      r.userData.t+=dt*(r.userData.isMotion?2.0:1.0);
-      if(r.userData.t>1.5){
+      r.userData.t+=dt*(r.userData.isMotion?1.5:1.0);
+      if(r.userData.t>2.0){
         r.userData.active=false;
         r.material.opacity=0;
       }else{
-        const prog=r.userData.t/1.5;
-        r.scale.setScalar(prog*6);
-        r.material.opacity=(1-prog)*(r.userData.isMotion?0.8:0.4);
+        const prog=r.userData.t/2.0;
+        r.scale.setScalar(prog*12); // giant spheres
+        r.material.opacity=(1-prog)*(r.userData.isMotion?0.15:0.05);
       }
     }
   });
 
+  // Human silhouette
   const conf=sysState.conf||0;
   if(conf>0 && spheres.laptop && spheres.phone){
     const center=new THREE.Vector3().addVectors(spheres.laptop.position, spheres.phone.position).multiplyScalar(0.5);
-    personZone.position.copy(center);
-    const r=Math.max(0.1, conf*3);
-    personZone.scale.setScalar(r);
-    personZone.userData.mesh.material.opacity=conf*0.15;
-    personZone.userData.wire.material.opacity=conf*0.4;
+    humanGroup.position.lerp(center, 0.1);
     
-    personLabel.visible=(conf>=0.5);
-    if(personLabel.visible){
-      personLabel.position.copy(center);
-      personLabel.position.y += currentView==='TOP' ? 0 : (r+0.5);
-      personLabel.position.z = currentView==='TOP' ? -r-0.5 : 0;
-    }
+    // Pulse based on confidence and time
+    const pulse = 0.6 + Math.sin(t*8)*0.2;
+    humanGroup.userData.bodyMat.opacity = conf * pulse;
+    humanGroup.userData.jointMat.opacity = conf * 0.9;
+    humanGroup.userData.baseMat.opacity = conf * 0.3;
+    
+    // Bobbing motion
+    humanGroup.userData.joints.forEach((j, i) => {
+        j.position.y += Math.sin(t*10 + i)*0.002;
+    });
   }else{
-    personZone.userData.mesh.material.opacity=0;
-    personZone.userData.wire.material.opacity=0;
-    personLabel.visible=false;
+    humanGroup.userData.bodyMat.opacity *= 0.9;
+    humanGroup.userData.jointMat.opacity *= 0.9;
+    humanGroup.userData.baseMat.opacity *= 0.9;
   }
 
   renderer.render(scene,camera);
-}
-
-function updateLink(line, p1, p2, n1, n2){
-  const pts=line.geometry.attributes.position.array;
-  pts[0]=p1.x; pts[1]=p1.y; pts[2]=p1.z;
-  pts[3]=p2.x; pts[4]=p2.y; pts[5]=p2.z;
-  line.geometry.attributes.position.needsUpdate=true;
-  
-  if(!n1||!n2){line.material.opacity=0;return;}
-  line.material.opacity=Math.max((n1.signal||0),(n2.signal||0))/200;
-  if(n1.motion && n2.motion) line.material.color.setHex(0xff0000);
-  else line.material.color.setHex(0xffffff);
 }
 
 // ── CHARTS ──
@@ -796,7 +556,7 @@ const mainChart=new Chart(mCtx,{
     {borderColor:'#1D9E75',borderWidth:2,pointRadius:0,tension:0.3,data:Array(60).fill(null)}
   ]},
   options:{responsive:true,maintainAspectRatio:false,animation:false,
-    scales:{x:{display:false},y:{min:0,max:100,grid:{color:'rgba(255,255,255,0.05)'},ticks:{color:'#6b7a99'}}},
+    scales:{x:{display:false},y:{display:false, min:0,max:100}},
     plugins:{legend:{display:false}}
   }
 });
@@ -811,60 +571,44 @@ KEYS.forEach(k=>{
 });
 
 // ── UPDATE LOGIC ──
-let lastStateStr='';
 function processData(d){
   sysState.state=d.state||'IDLE';
   sysState.conf=d.confidence||0;
   sysState.nodes=d.nodes||{};
   sysState.pos=d.positions||{};
 
-  if(sysState.state!==lastStateStr && !d.cooldown){
-    if(sysState.state==='ACTIVITY')beep(220,80);
-    else if(sysState.state==='MOTION')beep(440,100);
-    else if(sysState.state==='CONFIRMED'){beep(330,80);setTimeout(()=>beep(440,80),100);setTimeout(()=>beep(550,80),200);}
-  }
-  lastStateStr=sysState.state;
+  // Convert Windows % back to approximate dBm for display
+  const toDbm = (sig) => Math.round((sig/2)-100);
 
-  $('hudStatePill').textContent=sysState.state;
+  // HUD updates
+  $('hudStateTxt').textContent=sysState.state;
   $('hudStatePill').style.color=SCOLS[sysState.state]||'#888';
   $('hudStatePill').style.borderColor=SCOLS[sysState.state]||'#888';
-  $('hudConf').textContent=`CONFIDENCE: ${Math.round(sysState.conf*100)}%`;
-
-  $('spState').textContent=sysState.state;
-  $('spState').style.color=SCOLS[sysState.state]||'#888';
-  $('spDesc').textContent=SDESC[sysState.state]||'';
-  $('spNodes').textContent=`${d.active_nodes||0} ACTIVE NODES`;
+  $('hudDot').style.background=SCOLS[sysState.state]||'#888';
   
-  $('spConfFill').style.width=`${Math.round(sysState.conf*100)}%`;
-  $('spConfFill').className='conf-fill '+(sysState.conf>0.65?'red':sysState.conf>0.25?'amber':'green');
+  $('metric-conf').innerHTML=`${Math.round(sysState.conf*100)}<span>%</span>`;
+  $('confBar').style.width=`${Math.round(sysState.conf*100)}%`;
+  $('confBar').style.background=SCOLS[sysState.state];
 
-  let activeCalibrated = 0;
-  let activeNodesCount = 0;
-
+  let maxVar = 0;
   KEYS.forEach((k,i)=>{
     const n=sysState.nodes[k]||{};
     const online=n.online!==false;
-    
-    if(online) activeNodesCount++;
-    if(online && n.calibrated) activeCalibrated++;
     
     const cEl = document.getElementById(`card-${k}`);
     if(n.motion) cEl.style.borderColor = 'var(--motion)';
     else cEl.style.borderColor = 'var(--glass-border)';
 
-    let stEl=document.getElementById(`ns-${k}`);
-    if(!online){stEl.textContent='OFF';stEl.className='nc-status off';}
-    else if(!n.calibrated){stEl.textContent='CAL';stEl.className='nc-status cal';}
-    else{stEl.textContent='ON';stEl.className='nc-status on';}
-
-    document.getElementById(`sig-${k}`).innerHTML=`${n.signal||0}<small>%</small>`;
+    document.getElementById(`sig-${k}`).innerHTML=`${toDbm(n.signal||0)}<small>dBm</small>`;
     
     const zEl = document.getElementById(`z-${k}`);
-    zEl.textContent=`z: ${(n.zscore||0).toFixed(2)}`;
+    zEl.textContent=`v: ${(n.zscore||0).toFixed(2)}`;
     if(n.zscore > 2.0) zEl.style.color = 'var(--motion)';
     else if(n.zscore > 1.5) zEl.style.color = 'var(--activity)';
-    else zEl.style.color = 'var(--idle)';
+    else zEl.style.color = 'var(--muted)';
     
+    if(Math.abs(n.zscore||0) > maxVar) maxVar = Math.abs(n.zscore||0);
+
     if(sysState.pos[k] && k!=='extender') document.getElementById(`dist-${k}`).textContent=`${(sysState.pos[k].distance_from_extender||0).toFixed(1)} m`;
 
     history[k].push(n.smoothed||n.signal||0);
@@ -877,65 +621,24 @@ function processData(d){
     sparks[k].update();
   });
   mainChart.update();
-
-  if(activeNodesCount > 0 && activeCalibrated === activeNodesCount) {
-     if(!allNodesCalibrated) {
-         allNodesCalibrated = true;
-         $('calOverlay').style.opacity = '0';
-         setTimeout(()=>$('calOverlay').style.display = 'none', 500);
-     }
-  } else {
-     allNodesCalibrated = false;
-     $('calOverlay').style.display = 'flex';
-     setTimeout(()=>$('calOverlay').style.opacity = '1', 50);
-  }
+  
+  $('metric-mot').innerHTML=`${maxVar.toFixed(2)}<span>VAR</span>`;
 
   if(d.motion && !d.cooldown && sysState.state!=='CALIBRATING'){
     const ts=new Date().toTimeString().slice(0,8);
     const stCode=sysState.state.substring(0,3);
     const div=document.createElement('div');
     div.className='log-entry motion';
-    div.innerHTML=`<span class="le-time">[${ts}]</span><span class="le-state ${stCode}">&#9888; ${stCode}</span><span>src:${d.source} conf:${sysState.conf.toFixed(2)}</span>`;
+    div.innerHTML=`<span class="le-time">[${ts}]</span><span class="le-state ${stCode}" style="color:${SCOLS[sysState.state]}">${stCode}</span><span>src:${d.source}</span>`;
     $('logList').prepend(div);
     if($('logList').children.length>30) $('logList').lastChild.remove();
     logEvents.push({ts,st:sysState.state,src:d.source,conf:sysState.conf});
-    
-    sessEvents++;
-    sessConfSum += sysState.conf;
-    if(d.source){
-      const srcs = d.source.split('+');
-      srcs.forEach(s => { if(nodeTriggers[s]!==undefined) nodeTriggers[s]++; });
-    }
-    updateStats();
   }
 }
 
-function updateStats(){
-  $('stat-total').textContent = sessEvents;
-  const hrs = (Date.now() - sessStart) / 3600000;
-  $('stat-eph').textContent = (sessEvents / Math.max(hrs, 0.01)).toFixed(1);
-  let best='--', max=0;
-  KEYS.forEach(k=>{ if(nodeTriggers[k]>max){max=nodeTriggers[k]; best=k;} });
-  $('stat-active').textContent = best.toUpperCase();
-  $('stat-active').style.color = COLS[best]? '#'+COLS[best].toString(16) : 'inherit';
-  $('stat-avg-conf').textContent = sessEvents ? Math.round((sessConfSum/sessEvents)*100)+'%' : '0%';
-}
-
-// ── WEBSOCKET / POLLING / SIM ──
-let ws = null;
-function initWS(){
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
-  ws.onopen = () => { wsConnected = true; $('wsIndicator').textContent = 'WS: ON'; $('wsIndicator').classList.add('active'); };
-  ws.onmessage = (e) => { try { processData(JSON.parse(e.data)); failStrikes=0; $('offlineBanner').classList.remove('visible'); } catch(err){} };
-  ws.onerror = () => { wsConnected = false; updateWSIndicator(); };
-  ws.onclose = () => { wsConnected = false; updateWSIndicator(); setTimeout(initWS, 5000); };
-}
-function updateWSIndicator() { $('wsIndicator').textContent = 'WS: OFF (POLLING)'; $('wsIndicator').classList.remove('active'); }
-
+// ── POLLING / SIM ──
 async function poll(){
   if(simMode){runSim();return;}
-  if(wsConnected) return; 
   try{
     const r=await fetch('/fused');
     if(!r.ok)throw new Error();
@@ -954,7 +657,7 @@ function runSim(){
   let ld = 78 + Math.sin(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
   let pd = 65 + Math.cos(simT)*2 + (Math.random()*2-1) - (isBurst?14:0);
   let md = isBurst;
-  let conf = isBurst?0.75:0;
+  let conf = isBurst?0.80:0;
   
   processData({
     state: isBurst?'MOTION':'IDLE',
@@ -963,8 +666,8 @@ function runSim(){
     active_nodes: 3, cooldown: false,
     nodes: {
       extender:{signal:71,smoothed:71,zscore:0.2,motion:false,online:true,calibrated:true},
-      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?3.2:0.5,motion:md,online:true,calibrated:true},
-      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?2.8:0.1,motion:md,online:true,calibrated:true}
+      laptop:{signal:Math.round(ld),smoothed:ld,zscore:isBurst?2.6:0.5,motion:md,online:true,calibrated:true},
+      phone:{signal:Math.round(pd),smoothed:pd,zscore:isBurst?2.1:0.1,motion:md,online:true,calibrated:true}
     },
     positions: {
       extender:{x:0,y:0,z:0,fixed:true},
@@ -978,35 +681,30 @@ function runSim(){
 // ── INIT ──
 function setView(v) {
   currentView = v;
-  ['btn3D', 'btnTop', 'btnFloor'].forEach(id => $(id).classList.remove('active'));
+  ['btn3D', 'btnTop'].forEach(id => $(id).classList.remove('active'));
   $(`btn${v.charAt(0).toUpperCase() + v.slice(1).toLowerCase()}`).classList.add('active');
   
   if (v === '3D') {
-      camera.position.set(8, 5, 8); camera.lookAt(0, -1, 0);
-      autoRotate = true; $('btnRotate').classList.add('active');
+      camera.position.set(0, 8, 14); camera.lookAt(0, 0, 0);
+      autoRotate = true; 
   } else if (v === 'TOP') {
-      camera.position.set(0, 15, 0.01); camera.lookAt(0, 0, 0);
-      autoRotate = false; $('btnRotate').classList.remove('active');
-  } else if (v === 'FLOOR') {
-      camera.position.set(0, 1, 8); camera.lookAt(0, 0, 0);
-      autoRotate = false; $('btnRotate').classList.remove('active');
+      camera.position.set(0, 18, 0.01); camera.lookAt(0, 0, 0);
+      autoRotate = false; 
   }
 }
 
 $('btn3D').onclick=()=>setView('3D');
 $('btnTop').onclick=()=>setView('TOP');
-$('btnFloor').onclick=()=>setView('FLOOR');
-$('btnRotate').onclick=e=>{autoRotate=!autoRotate;e.target.classList.toggle('active',autoRotate);};
 
 $('btnSimOff').onclick=e=>{
   simMode=!simMode; 
   e.target.textContent=simMode?"SIM ON":"SIM OFF";
-  e.target.style.color = simMode ? 'var(--text)' : 'var(--watching)';
+  e.target.style.color = simMode ? '#FAFAF8' : 'var(--watching)';
   e.target.style.borderColor = simMode ? 'var(--border)' : 'rgba(217,119,6,0.3)';
   e.target.classList.toggle('active',simMode);
 };
 
-$('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'&#128263;':'&#128266;';e.target.classList.toggle('active',muted);};
+$('btnMute').onclick=e=>{muted=!muted;e.target.innerHTML=muted?'SOUND OFF':'SOUND ON';e.target.classList.toggle('active',!muted);};
 $('thrSlider').oninput=e=>{$('thrVal').textContent=e.target.value;if(!simMode)fetch('/set_threshold/'+e.target.value).catch(()=>{});};
 $('btnExport').onclick=()=>{
   let csv='Time,State,Source,Conf\n'+logEvents.map(e=>`${e.ts},${e.st},${e.src},${e.conf}`).join('\n');
@@ -1014,10 +712,7 @@ $('btnExport').onclick=()=>{
   a.download='events.csv';a.click();
 };
 
-$('drawerHandleArea').onclick=()=>$('bottomDrawer').classList.toggle('open');
-
 init3D();
-initWS();
 setInterval(poll,1000);
 poll();
 </script>
