@@ -298,20 +298,29 @@ function renderRadar(){
     // Phone Node
     let px = posLerp.phone.x, pz = posLerp.phone.z;
     let phdx = px - lx, phdz = pz - lz;
+    let phDist = Math.sqrt(phdx*phdx + phdz*phdz);
     let phAng = Math.atan2(phdz, phdx);
     if(phAng < 0) phAng += Math.PI*2;
     if(checkSweep(oldAng, sweepAng, phAng)) {
-      blips.push({x: phdx, y: phdz, life: 1.0, type: 'phone'});
+      blips.push({x: phdx, y: phdz, life: 1.0, type: 'phone', dist: phDist, label: 'PHONE'});
     }
 
     // Person (Motion)
     if (sysState.conf > 0.3) {
-      let mdx = (px - lx)/2 + (Math.random()-0.5)*0.5;
-      let mdz = (pz - lz)/2 + (Math.random()-0.5)*0.5;
+      let lZ = Math.max(0, n.laptop.zscore || 0);
+      let pZ = Math.max(0, n.phone.zscore || 0);
+      let totalZ = lZ + pZ || 1; // avoid division by zero
+      // Weight position towards the node with the higher Z-score
+      let weightPhone = pZ / totalZ;
+      let weightLaptop = lZ / totalZ;
+      // Add slight jitter for realism, but center on the weighted average
+      let mdx = phdx * weightPhone + (Math.random()-0.5)*0.3;
+      let mdz = phdz * weightPhone + (Math.random()-0.5)*0.3;
+      let mDist = Math.sqrt(mdx*mdx + mdz*mdz);
       let mAng = Math.atan2(mdz, mdx);
       if(mAng < 0) mAng += Math.PI*2;
       if(checkSweep(oldAng, sweepAng, mAng)) {
-        blips.push({x: mdx, y: mdz, life: 1.0, type: 'person'});
+        blips.push({x: mdx, y: mdz, life: 1.0, type: 'person', dist: mDist, label: 'MOTION'});
       }
     }
   }
@@ -333,6 +342,11 @@ function renderRadar(){
     ctx.shadowColor = `rgba(${color}, 1)`;
     ctx.fill();
     ctx.shadowBlur = 0;
+
+    // Draw label and distance
+    ctx.fillStyle = `rgba(255, 255, 255, ${b.life * 0.9})`;
+    ctx.font = `600 ${10*window.devicePixelRatio}px 'JetBrains Mono', monospace`;
+    ctx.fillText(`${b.label} ${b.dist.toFixed(1)}m`, bx + 12, by + 4);
   }
 
   // Draw Laptop (Center Origin)
@@ -343,6 +357,11 @@ function renderRadar(){
   ctx.shadowColor = '#378ADD';
   ctx.fill();
   ctx.shadowBlur = 0;
+
+  // Draw Laptop label
+  ctx.fillStyle = `rgba(255, 255, 255, 0.9)`;
+  ctx.font = `600 ${10*window.devicePixelRatio}px 'JetBrains Mono', monospace`;
+  ctx.fillText(`LAPTOP 0.0m`, cx + 12, cy + 4);
 }
 requestAnimationFrame(renderRadar);
 

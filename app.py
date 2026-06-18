@@ -71,8 +71,9 @@ def smooth_distance(key, raw_signal):
     Signal EMA stays fast for Z-score detection.
     Distance EMA is slower for visual stability.
     """
+    # Tuned for indoor environment: 1m Reference RSSI approx -42dBm, Path Loss Exponent 2.8
     dbm = raw_signal / 2 - 100
-    raw_dist = min(12.0, max(0.4, 10 ** ((-40 - dbm) / 30)))
+    raw_dist = min(12.0, max(0.4, 10 ** ((-42 - dbm) / 28)))
     
     if dist_ema[key] is None:
         dist_ema[key] = raw_dist
