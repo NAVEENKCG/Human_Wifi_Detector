@@ -90,6 +90,20 @@ const serverUrl = document.getElementById('serverUrl');
 const logEl = document.getElementById('log');
 
 let posts = 0;
+let prevRtt = null;  // Track previous RTT for delta feature
+
+// Linear interpolation RTT→signal (preserves micro-variations from human bodies)
+const BP = [[0,100],[5,96],[10,88],[20,78],[40,65],[80,48],[150,32],[300,18],[500,5]];
+function rttToSignal(rtt) {
+  if (rtt <= BP[0][0]) return BP[0][1];
+  for (let i = 1; i < BP.length; i++) {
+    if (rtt <= BP[i][0]) {
+      const [r0,s0] = BP[i-1], [r1,s1] = BP[i];
+      return Math.round(s0 + (s1 - s0) * (rtt - r0) / (r1 - r0));
+    }
+  }
+  return BP[BP.length-1][1];
+}
 
 function addLog(msg) {
   const d = document.createElement('div');
@@ -115,16 +129,12 @@ async function measureAndSend() {
     await fetch(`${base}/fused`, { method: 'GET', mode: 'cors', cache: 'no-cache' });
     rtt = Math.round(performance.now() - t0);
 
-    if (rtt <= 5) signal = 98;
-    else if (rtt <= 10) signal = 90;
-    else if (rtt <= 20) signal = 80;
-    else if (rtt <= 40) signal = 70;
-    else if (rtt <= 80) signal = 55;
-    else if (rtt <= 150) signal = 40;
-    else if (rtt <= 300) signal = 25;
-    else signal = 10;
+    // Interpolated signal — no artificial jitter
+    signal = rttToSignal(rtt);
 
-    signal = Math.max(1, Math.min(100, signal + Math.round((Math.random() - 0.5) * 6)));
+    // Compute RTT delta (change from previous reading) as second detection feature
+    const rttDelta = prevRtt !== null ? rtt - prevRtt : 0;
+    prevRtt = rtt;
 
     rttVal.textContent = rtt;
     sigVal.textContent = signal;
@@ -133,7 +143,7 @@ async function measureAndSend() {
     const resp = await fetch(`${base}/phone`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ signal, rtt })
+      body: JSON.stringify({ signal, rtt, rtt_delta: rttDelta })
     });
 
     if (resp.ok) {
@@ -141,7 +151,7 @@ async function measureAndSend() {
       postCount.textContent = posts;
       statusBadge.textContent = 'SENDING';
       statusBadge.className = 'status-badge sending';
-      addLog(`POST signal=${signal} rtt=${rtt}ms → OK`);
+      addLog(`POST sig=${signal} rtt=${rtt}ms Δ=${rttDelta} → OK`);
     } else {
       statusBadge.textContent = 'ERROR';
       statusBadge.className = 'status-badge error';
@@ -156,8 +166,8 @@ async function measureAndSend() {
   }
 }
 
-setInterval(measureAndSend, 1000);
-addLog('Phone node started');
+setInterval(measureAndSend, 600);  // 600ms for better temporal resolution
+addLog('Phone node started — no jitter, interpolated signal');
 </script>
 </body>
 </html>

@@ -6,28 +6,47 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-# -- Config ------------------------------------------------
-WARMUP_SAMPLES   = 20      # calibration phase - no detection
-WINDOW_SIZE      = 20      # rolling Z-score window
-CONSECUTIVE_NEED = 2       # Z-spikes in a row before node.motion=True
-COOLDOWN_SECS    = 4       # seconds before re-arming after event
-PHONE_TIMEOUT    = 5       # seconds before phone marked offline
-EXTENDER_TIMEOUT = 5
-EVENT_LOG_FILE   = "events.jsonl"
+# ══════════════════════════════════════════════════════════════
+# CONFIG — Tuned for accurate person detection
+# ══════════════════════════════════════════════════════════════
+WARMUP_SAMPLES    = 12       # calibration phase (~7s at 600ms intervals)
+WINDOW_SIZE       = 20       # rolling Z-score window
+CONSECUTIVE_NEED  = 2        # fallback consecutive gate (CUSUM is primary)
+COOLDOWN_SECS     = 2        # shortened — allows rapid re-detection
+PHONE_TIMEOUT     = 5        # seconds before phone marked offline
+EXTENDER_TIMEOUT  = 5
+EVENT_LOG_FILE    = "events.jsonl"
 
-# ── Tuned constants ────────────────────────────────
-POLL_INTERVAL     = 0.5    # halves data latency
-EMA_ALPHA         = 0.25   # slightly more smoothing
-DISTANCE_EMA      = 0.15   # separate, slower EMA for distance only
-HAMPEL_K          = 3      # window half-size for outlier filter
-HAMPEL_T          = 2.8    # threshold multiplier
+POLL_INTERVAL     = 0.5      # laptop polling interval
+EMA_ALPHA         = 0.25     # signal EMA smoothing factor
+DISTANCE_EMA      = 0.15     # separate slower EMA for distance display
+HAMPEL_K          = 3        # window half-size for outlier filter
+HAMPEL_T          = 2.8      # Hampel threshold multiplier
 
-# Node weights - floor-aware (router on ground floor = reference only)
+# CUSUM change-point detector parameters
+CUSUM_DRIFT       = 0.5      # noise allowance (prevents drift on flat signal)
+CUSUM_THRESHOLD   = 3.5      # accumulated evidence needed to trigger
+
+# Delta (rate-of-change) detection
+DELTA_WINDOW_SIZE = 10       # rolling window for signal deltas
+DELTA_Z_THRESHOLD = 1.8      # Z-score threshold on delta channel
+
+# Cross-node temporal correlation
+CORRELATION_WINDOW = 2.0     # seconds — nodes must fire within this window
+SINGLE_NODE_PENALTY = 0.6    # confidence multiplier for single-node-only events
+MULTI_NODE_BONUS   = 1.0     # confidence multiplier when ≥2 nodes correlate
+
+# Anti-phantom: sustained anomaly requirement
+CONFIRM_SUSTAIN_SECS = 1.5   # anomaly must persist this long for CONFIRMED state
+
+# Node weights (router on ground floor = reference only)
 NODE_WEIGHTS = {"laptop": 0.40, "phone": 0.35, "extender": 0.25}
 
-# -- State --------------------------------------------------
+# ══════════════════════════════════════════════════════════════
+# STATE
+# ══════════════════════════════════════════════════════════════
 nodes = {k: {
-    "signal": 0, "smoothed": 0.0, "zscore": 0.0,
+    "signal": 0, "smoothed": 0.0, "zscore": 0.0, "delta_zscore": 0.0,
     "motion": False, "consecutive": 0,
     "timestamp": 0, "last_seen": 0,
     "calibrated": False, "baseline_mean": 0, "baseline_std": 0
@@ -35,11 +54,25 @@ nodes = {k: {
 
 nodes["laptop"]["router"] = "Unknown"
 
-windows    = {k: deque(maxlen=WINDOW_SIZE) for k in NODE_WEIGHTS}
-warmup_buf = {k: [] for k in NODE_WEIGHTS}
-ema_prev   = {k: None for k in NODE_WEIGHTS}
-consec     = {k: 0 for k in NODE_WEIGHTS}
+windows      = {k: deque(maxlen=WINDOW_SIZE) for k in NODE_WEIGHTS}
+warmup_buf   = {k: [] for k in NODE_WEIGHTS}
+ema_prev     = {k: None for k in NODE_WEIGHTS}
+consec       = {k: 0 for k in NODE_WEIGHTS}
 cooldown_until = 0
+
+# Delta (rate-of-change) state
+delta_windows = {k: deque(maxlen=DELTA_WINDOW_SIZE) for k in NODE_WEIGHTS}
+prev_smoothed = {k: None for k in NODE_WEIGHTS}
+
+# CUSUM state per node
+cusum_pos = {k: 0.0 for k in NODE_WEIGHTS}
+cusum_neg = {k: 0.0 for k in NODE_WEIGHTS}
+
+# Cross-node correlation state
+last_anomaly_time = {k: 0.0 for k in NODE_WEIGHTS}
+
+# Anti-phantom: track when motion first started per node
+motion_onset = {k: 0.0 for k in NODE_WEIGHTS}
 
 fused = {
     "state": "CALIBRATING",
@@ -51,10 +84,14 @@ fused = {
     "timestamp": 0
 }
 
-# ── Per-node distance EMA state ────────────────────
+# Per-node distance EMA state
 dist_ema = {"laptop": None, "phone": None, "extender": 0.0}
 
-# ── Hampel outlier filter ──────────────────────────
+
+# ══════════════════════════════════════════════════════════════
+# SIGNAL PROCESSING
+# ══════════════════════════════════════════════════════════════
+
 def hampel_filter(value, window):
     """Replaces EMA for spike rejection — far better for RSSI"""
     if len(window) < 2 * HAMPEL_K + 1:
@@ -64,34 +101,28 @@ def hampel_filter(value, window):
     mad = statistics.median([abs(x - med) for x in w]) or 0.001
     return med if abs(value - med) > HAMPEL_T * 1.4826 * mad else value
 
-# ── Smoothed distance with dedicated EMA ──────────
+
 def smooth_distance(key, raw_signal):
-    """
-    Separate slower EMA just for distance — prevents dot thrashing.
-    Signal EMA stays fast for Z-score detection.
-    Distance EMA is slower for visual stability.
-    """
-    # Tuned for indoor environment: 1m Reference RSSI approx -42dBm, Path Loss Exponent 2.8
+    """Separate slower EMA for distance — prevents dot thrashing on radar."""
     dbm = raw_signal / 2 - 100
     raw_dist = min(12.0, max(0.4, 10 ** ((-42 - dbm) / 28)))
-    
+
     if dist_ema[key] is None:
         dist_ema[key] = raw_dist
-    
+
     # Only update if change is significant (>0.2m) — kills micro-jitter
     if abs(raw_dist - dist_ema[key]) < 0.2:
         return round(dist_ema[key], 2)
-    
+
     dist_ema[key] = DISTANCE_EMA * raw_dist + (1 - DISTANCE_EMA) * dist_ema[key]
     return round(dist_ema[key], 2)
 
-# ── Position estimator with angular spread ─────────
-_angle_offsets = {"laptop": 0.52, "phone": -0.85}  # radians — spread them apart
+
+_angle_offsets = {"laptop": 0.52, "phone": -0.85}
 
 def estimate_position(key, signal):
     dist = smooth_distance(key, signal)
     angle = _angle_offsets.get(key, 0)
-    # Positions on the 1st floor plane (y stays near 0)
     return {
         "x": round(dist * math.cos(angle), 3),
         "y": 0.15,
@@ -101,6 +132,7 @@ def estimate_position(key, signal):
         "distance_from_extender": dist
     }
 
+
 def ema_smooth(key, raw):
     if ema_prev[key] is None:
         ema_prev[key] = raw
@@ -108,17 +140,45 @@ def ema_smooth(key, raw):
     ema_prev[key] = smoothed
     return round(smoothed, 2)
 
+
 def zscore(val, win):
-    if len(win) < 5: return 0.0
+    if len(win) < 5:
+        return 0.0
     m = statistics.mean(win)
     s = statistics.stdev(win) or 0.001
     return (val - m) / s
 
+
 def adaptive_threshold(key):
-    """2.2x above baseline noise - computed once during warmup"""
+    """2.2x above baseline noise — computed once during warmup"""
     n = nodes[key]
-    if not n["calibrated"]: return 2.0
+    if not n["calibrated"]:
+        return 2.0
     return max(1.5, 2.2 * n["baseline_std"] / max(n["baseline_std"], 1))
+
+
+# ══════════════════════════════════════════════════════════════
+# CUSUM CHANGE-POINT DETECTOR
+# ══════════════════════════════════════════════════════════════
+
+def cusum_update(key, z_value):
+    """
+    Cumulative Sum detector — accumulates evidence over time.
+    Far more robust than "N spikes in a row" because a slow walk-in
+    producing z=1.5 for 5 samples will trigger CUSUM but not consecutive gate.
+    """
+    cusum_pos[key] = max(0, cusum_pos[key] + abs(z_value) - CUSUM_DRIFT)
+    cusum_neg[key] = max(0, cusum_neg[key] + abs(z_value) - CUSUM_DRIFT)
+    triggered = cusum_pos[key] > CUSUM_THRESHOLD or cusum_neg[key] > CUSUM_THRESHOLD
+    if triggered:
+        cusum_pos[key] = 0.0  # reset after detection
+        cusum_neg[key] = 0.0
+    return triggered
+
+
+# ══════════════════════════════════════════════════════════════
+# DUAL-FEATURE NODE UPDATE
+# ══════════════════════════════════════════════════════════════
 
 def update_node(key, raw_signal):
     global cooldown_until
@@ -131,7 +191,7 @@ def update_node(key, raw_signal):
     n["timestamp"] = now
     n["last_seen"] = now
 
-    # Warmup / calibration
+    # ── Warmup / calibration ──
     if not n["calibrated"]:
         warmup_buf[key].append(smoothed)
         if len(warmup_buf[key]) >= WARMUP_SAMPLES:
@@ -140,29 +200,63 @@ def update_node(key, raw_signal):
             n["baseline_std"]  = statistics.stdev(buf) or 1.0
             n["calibrated"]    = True
         n["zscore"] = 0.0
+        n["delta_zscore"] = 0.0
         n["motion"] = False
         update_fused()
         return
 
-    # Z-score
+    # ── Feature 1: Signal Z-score ──
     windows[key].append(smoothed)
     z = zscore(smoothed, windows[key])
     n["zscore"] = round(z, 3)
 
-    # Consecutive anomaly gate
+    # ── Feature 2: Rate-of-change (delta) Z-score ──
+    delta = 0.0
+    if prev_smoothed[key] is not None:
+        delta = smoothed - prev_smoothed[key]
+    prev_smoothed[key] = smoothed
+
+    delta_windows[key].append(delta)
+    z_delta = zscore(delta, delta_windows[key])
+    n["delta_zscore"] = round(z_delta, 3)
+
+    # ── CUSUM on combined signal ──
+    # Use the stronger of the two Z-scores to feed CUSUM
+    combined_z = max(abs(z), abs(z_delta) * 0.7)  # delta weighted slightly lower
+    cusum_triggered = cusum_update(key, combined_z)
+
+    # ── Legacy consecutive gate (fallback) ──
     thresh = adaptive_threshold(key)
-    if abs(z) > thresh:
+    if abs(z) > thresh or abs(z_delta) > DELTA_Z_THRESHOLD:
         consec[key] += 1
     else:
         consec[key] = 0
 
-    # Motion confirmed for this node
+    consecutive_triggered = consec[key] >= CONSECUTIVE_NEED
+
+    # ── Motion decision: CUSUM OR consecutive gate ──
     in_cooldown = now < cooldown_until
-    n["motion"] = (consec[key] >= CONSECUTIVE_NEED) and not in_cooldown
+    any_triggered = (cusum_triggered or consecutive_triggered) and not in_cooldown
+
+    # Track anomaly timing for cross-node correlation
+    if any_triggered:
+        last_anomaly_time[key] = now
+
+    # Track motion onset for anti-phantom
+    if any_triggered and not n["motion"]:
+        motion_onset[key] = now
+
+    n["motion"] = any_triggered
+
     if n["motion"]:
         consec[key] = 0  # reset after firing
 
     update_fused()
+
+
+# ══════════════════════════════════════════════════════════════
+# FUSED STATE WITH CROSS-NODE CORRELATION & ANTI-PHANTOM
+# ══════════════════════════════════════════════════════════════
 
 def update_fused():
     global cooldown_until
@@ -185,8 +279,24 @@ def update_fused():
                 motion_nodes.append(k)
                 conf += w
 
+    # ── Cross-node temporal correlation ──
+    # Count how many nodes had anomalies within the correlation window
+    correlated_count = sum(
+        1 for k in active
+        if (now - last_anomaly_time[k]) < CORRELATION_WINDOW
+    )
+
+    if conf > 0 and len(motion_nodes) > 0:
+        if correlated_count >= 2:
+            # Multiple nodes fired within 2s — high confidence, real person
+            conf *= MULTI_NODE_BONUS
+        elif correlated_count == 1 and len(motion_nodes) == 1:
+            # Single node only — likely WiFi glitch, penalize
+            conf *= SINGLE_NODE_PENALTY
+
     conf = round(min(conf, 1.0), 2)
 
+    # ── State classification with anti-phantom ──
     if in_cooldown:
         state = fused["state"]
     elif conf == 0:
@@ -197,7 +307,15 @@ def update_fused():
     elif conf <= 0.65:
         state = "MOTION"
     else:
-        state = "CONFIRMED"
+        # Anti-phantom: CONFIRMED requires sustained anomaly ≥1.5s
+        earliest_onset = min(
+            (motion_onset[k] for k in motion_nodes if motion_onset[k] > 0),
+            default=now
+        )
+        if (now - earliest_onset) >= CONFIRM_SUSTAIN_SECS:
+            state = "CONFIRMED"
+        else:
+            state = "MOTION"  # not yet sustained long enough
 
     prev_motion = fused.get("motion", False)
     new_motion  = conf > 0
@@ -215,6 +333,7 @@ def update_fused():
         "timestamp": now
     })
 
+
 def log_event(state, conf, sources):
     event = {
         "timestamp": time.time(),
@@ -222,7 +341,8 @@ def log_event(state, conf, sources):
         "confidence": conf,
         "source": "+".join(sources),
         "nodes": {k: {"signal": nodes[k]["signal"],
-                      "zscore": nodes[k]["zscore"]} for k in NODE_WEIGHTS}
+                       "zscore": nodes[k]["zscore"],
+                       "delta_zscore": nodes[k]["delta_zscore"]} for k in NODE_WEIGHTS}
     }
     try:
         with open(EVENT_LOG_FILE, "a") as f:
@@ -230,9 +350,13 @@ def log_event(state, conf, sources):
     except Exception:
         pass
 
-# ── Faster netsh with result caching ───────────────
+
+# ══════════════════════════════════════════════════════════════
+# LAPTOP RSSI READER
+# ══════════════════════════════════════════════════════════════
+
 _netsh_cache = {"signal": 0, "router": "Unknown", "ts": 0}
-_CACHE_TTL = 0.4  # reuse result if fresher than 400ms
+_CACHE_TTL = 0.4
 
 def get_laptop_rssi_fast():
     now = time.time()
@@ -252,6 +376,7 @@ def get_laptop_rssi_fast():
     except Exception:
         return _netsh_cache["signal"], _netsh_cache["router"]
 
+
 def laptop_loop():
     fail_count = 0
     while True:
@@ -266,6 +391,11 @@ def laptop_loop():
             if fail_count >= 5:
                 nodes["laptop"]["motion"] = False
         time.sleep(POLL_INTERVAL)
+
+
+# ══════════════════════════════════════════════════════════════
+# API ROUTES
+# ══════════════════════════════════════════════════════════════
 
 @app.route("/rssi")
 def rssi():
@@ -283,7 +413,8 @@ def extender_post():
     update_node("extender", int(d.get("signal", 0)))
     return jsonify({"status": "ok", "calibrated": nodes["extender"]["calibrated"]})
 
-# ── Upgrade /fused to include velocity hint ─────────
+
+# ── /fused with velocity hint for radar ──
 _prev_positions = {}
 _prev_pos_time  = {}
 
