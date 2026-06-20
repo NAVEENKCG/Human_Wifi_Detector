@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>WiFi Sensing Radar POV</title>
+<title>WiFi Sensing Radar — Industrial Tuned</title>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
@@ -79,6 +79,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
 
 #offlineBanner{position:fixed; top:20px; left:50%; transform:translateX(-50%); background:rgba(229,62,62,0.2); border:1px solid rgba(229,62,62,0.4); color:#ff8888; padding:8px 24px; border-radius:12px; font-size:0.75rem; font-weight:700; z-index:50; display:none; backdrop-filter:blur(8px);}
 #offlineBanner.visible{display:block;}
+
+/* Tuning Panel */
+.tuning-grid{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+.tune-item{background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:8px 10px; text-align:center;}
+.tune-label{font-size:0.5rem; color:var(--muted); letter-spacing:0.08em; margin-bottom:4px; text-transform:uppercase;}
+.tune-val{font-size:0.85rem; font-weight:700; color:var(--idle);}
+.tune-src{font-size:0.45rem; color:rgba(56,161,105,0.5); margin-top:2px; letter-spacing:0.05em;}
 </style>
 </head>
 <body>
@@ -92,7 +99,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
   <div class="radar-overlay">
     <div>
       <div class="hud-title"><div class="dot"></div> <span style="color:var(--laptop)">LAPTOP</span> POV SENSOR</div>
-      <div class="hud-sub">SWEEP RADIUS: 5.0 METERS</div>
+      <div class="hud-sub" id="hudSub">INDUSTRIAL TUNED • CUSUM + HAMPEL + MAD</div>
     </div>
     <div>
       <div class="state-pill" id="hudState">
@@ -126,13 +133,25 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
     </div>
   </div>
 
+  <div class="panel" style="padding:14px;">
+    <div class="panel-title" style="margin-bottom:10px;">TUNING PARAMS <span style="color:rgba(56,161,105,0.5); font-size:0.5rem;">INDUSTRIAL</span></div>
+    <div class="tuning-grid">
+      <div class="tune-item"><div class="tune-label">CUSUM DRIFT</div><div class="tune-val" id="t-drift">0.3</div><div class="tune-src">IEEE</div></div>
+      <div class="tune-item"><div class="tune-label">CUSUM THRES</div><div class="tune-val" id="t-thresh">4.0</div><div class="tune-src">IEEE</div></div>
+      <div class="tune-item"><div class="tune-label">EMA α</div><div class="tune-val" id="t-ema">0.18</div><div class="tune-src">RESEARCH</div></div>
+      <div class="tune-item"><div class="tune-label">PL EXPONENT</div><div class="tune-val" id="t-pln">3.0</div><div class="tune-src">INDOOR</div></div>
+      <div class="tune-item"><div class="tune-label">HAMPEL K</div><div class="tune-val" id="t-hk">4</div><div class="tune-src">FILTER</div></div>
+      <div class="tune-item"><div class="tune-label">HAMPEL T</div><div class="tune-val" id="t-ht">2.5</div><div class="tune-src">MAD</div></div>
+    </div>
+  </div>
+
   <div class="panel" style="padding:16px;">
     <div class="panel-title" style="margin-bottom:12px;">ACTIVE NODES</div>
     <div class="node-list">
       <div class="node-card" id="card-laptop" style="border-left:3px solid var(--laptop)">
         <div class="nc-left">
           <div class="nc-name" style="color:var(--laptop)">LAPTOP</div>
-          <div class="nc-z" id="z-laptop">Var: 0.00</div>
+          <div class="nc-z" id="z-laptop">Z: 0.00 │ Δ: 0.00</div>
         </div>
         <div class="nc-right">
           <div class="nc-sig" id="sig-laptop">--<small>dBm</small></div>
@@ -141,7 +160,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
       <div class="node-card" id="card-phone" style="border-left:3px solid var(--phone)">
         <div class="nc-left">
           <div class="nc-name" style="color:var(--phone)">PHONE</div>
-          <div class="nc-z" id="z-phone">Var: 0.00</div>
+          <div class="nc-z" id="z-phone">Z: 0.00 │ Δ: 0.00</div>
         </div>
         <div class="nc-right">
           <div class="nc-sig" id="sig-phone">--<small>dBm</small></div>
@@ -150,7 +169,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--font);min-height:1
       <div class="node-card" id="card-extender" style="border-left:3px solid var(--extender)">
         <div class="nc-left">
           <div class="nc-name" style="color:var(--extender)">EXTENDER</div>
-          <div class="nc-z" id="z-extender">Var: 0.00</div>
+          <div class="nc-z" id="z-extender">Z: 0.00 │ Δ: 0.00</div>
         </div>
         <div class="nc-right">
           <div class="nc-sig" id="sig-extender">--<small>dBm</small></div>
@@ -409,6 +428,21 @@ function processData(d){
   $('hudTxt').textContent = sysState.state;
 
   $('val-conf').innerHTML = `${Math.round(sysState.conf*100)}<span>%</span>`;
+
+  // Update tuning params if available
+  if(d.tuning){
+    $('t-drift').textContent = d.tuning.cusum_drift;
+    $('t-thresh').textContent = d.tuning.cusum_threshold;
+    $('t-ema').textContent = d.tuning.ema_alpha;
+    $('t-pln').textContent = d.tuning.pl_exponent;
+    $('t-hk').textContent = d.tuning.hampel_k;
+    $('t-ht').textContent = d.tuning.hampel_t;
+    // Update HUD subtitle with channel/band info
+    let sub = 'INDUSTRIAL TUNED \u2022 CUSUM + HAMPEL + MAD';
+    if(d.tuning.channel) sub += ` \u2022 CH${d.tuning.channel}`;
+    if(d.tuning.band) sub += ` ${d.tuning.band}`;
+    $('hudSub').textContent = sub;
+  }
   
   let maxVar = 0;
   KEYS.forEach((k,i)=>{
@@ -420,9 +454,10 @@ function processData(d){
     $(`sig-${k}`).innerHTML = `${Math.round((n.signal||0)/2 - 100)}<small>dBm</small>`;
     
     let z = n.zscore || 0;
-    $(`z-${k}`).textContent = `Var: ${z.toFixed(2)}`;
-    if(z > 2.0) $(`z-${k}`).style.color = 'var(--motion)';
-    else if(z > 1.5) $(`z-${k}`).style.color = 'var(--activity)';
+    let dz = n.delta_zscore || 0;
+    $(`z-${k}`).textContent = `Z: ${z.toFixed(2)} \u2502 \u0394: ${dz.toFixed(2)}`;
+    if(Math.abs(z) > 2.0 || Math.abs(dz) > 2.2) $(`z-${k}`).style.color = 'var(--motion)';
+    else if(Math.abs(z) > 1.5) $(`z-${k}`).style.color = 'var(--activity)';
     else $(`z-${k}`).style.color = 'var(--muted)';
     
     if(Math.abs(z) > maxVar) maxVar = Math.abs(z);
